@@ -61,20 +61,17 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 </style>
 </head>
 <body>
-
 <div class="top">
 <div style="font-size:24px" onclick="location.href='/logout'">☰</div>
 <div class="logo">ANIMALITOS<span>GLOBAL</span></div>
 <div><div class="saldo"><small>saldo</small> <b id="saldo">S/ 0.00</b> <div class="plus" id="btn-plus">+</div> <button class="btn-retiro-top" id="btn-retiro-top">RETIRAR</button></div>
 <div style="text-align:right;font-size:10px;margin-top:4px">ID: {{ session['user'] if session['user'] else 0 }} | BCP 19106864219053</div></div>
 </div>
-
 <div class="info">
 <div class="box"><small>PERIODO ACTUAL</small><b id="periodo">{{ sorteo[0] if sorteo else 0 }}</b></div>
 <div class="box live"><small>EN VIVO</small><b class="red" id="timer">60:00</b></div>
 <div class="box"><small>JUGANDO</small><b id="jugadores">En sala</b></div>
 </div>
-
 <div class="historial">
 <div class="historial-head">
 <b style="font-size:11px;color:#d4a853">📜 ÚLTIMOS QUE SALIERON</b>
@@ -82,9 +79,7 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 </div>
 <div id="historialAnimales" class="historial-items"></div>
 </div>
-
 <div class="grid" id="grid"></div>
-
 <div class="panel">
 <div style="font-size:12px;color:#d4a853">💰 MONTO POR APUESTA</div>
 <div class="monto-row" id="montoPorApuesta">
@@ -97,7 +92,6 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 </div>
 <div style="margin-top:8px;text-align:center"><small id="misRetirosTxt" style="color:#aaa;font-size:10px"></small></div>
 </div>
-
 <div id="modalSala" class="modal-sala">
 <h2>🎯 Tus Animalitos</h2>
 <div id="listaElegidos" class="animales-elegidos"></div>
@@ -106,7 +100,6 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 <div style="font-size:12px;color:#aaa">Apuesta total: <b id="totalSala" style="color:#ffcc4d">S/ 0</b><br>Espera el resultado...</div>
 <div style="margin-top:20px;font-size:10px;color:#666">BCP 19106864219053 - Sala ID {{ sorteo[0] if sorteo else 0 }}</div>
 </div>
-
 <div id="modalResultado" class="modal-sala">
 <h2>🏆 RESULTADO</h2>
 <div class="ganador-box">
@@ -115,7 +108,7 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 <div id="ganadorNum" style="font-size:12px;color:#aaa">N° 07</div>
 <div id="ganasteTexto" style="margin-top:12px;font-size:14px;line-height:1.4"></div>
 </div>
-<button class="btn-volver" onclick="volverSala()">🔄 Volver a la sala para volver a apostar</button>
+<button class="btn-volver" onclick="volverSala()">🔄 Volver a la sala</button>
 </div>
 <div id="modalRecarga" class="modal-recarga">
 <div class="box-recarga">
@@ -150,7 +143,6 @@ Titular: <b>Edwin Salas</b>
 <div class="secure">Cuenta verificada BCP 19106864219053 - Aprobamos en 5 min</div>
 </div>
 </div>
-
 <div id="modalRetiro" class="modal-recarga">
 <div class="box-recarga">
 <h3>💸 Solicitar Retiro</h3>
@@ -173,27 +165,40 @@ Titular: <b>Edwin Salas</b>
 <div id="listaMisRetiros" style="margin-top:12px;font-size:11px"></div>
 </div>
 </div>
-
 <script>
-// === FIX TIMER 60 MIN ESTABLE ===
+// TIMER FIX QUE NO SE REINICIA AL REFRESCAR
 let saldoActual=0; try{saldoActual=parseFloat("{{ saldo|default(0) }}")||0;}catch(e){}
 let cierreISO="{{ sorteo[1] if sorteo and sorteo|length>1 else '' }}";
 let periodoId="{{ sorteo[0] if sorteo else 0 }}";
 document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2);
 const animales=[[1,"Perro","🐶"],[2,"Gato","🐱"],[3,"Ratón","🐭"],[4,"Conejo","🐰"],[5,"Zorro","🦊"],[6,"Tigre","🐯"],[7,"León","🦁"],[8,"Elefante","🐘"],[9,"Mono","🐒"],[10,"Gallina","🐔"],[11,"Gallo","🐓"],[12,"Cerdo","🐷"],[13,"Vaca","🐄"],[14,"Caballo","🐴"],[15,"Alpaca","🦙"],[16,"Vicuña","🦙"],[17,"Cóndor","🦅"],[18,"Oso","🐻"],[19,"Puma","🦁"],[20,"Gallito","🐦"],[21,"Caimán","🐊"],[22,"Serpiente","🐍"],[23,"Rana","🐸"],[24,"Delfin","🐬"],[25,"Guacamayo","🦜"]];
-let monto=5, apuestas={};
-let misApuestasGuardadas={};
+let monto=5, apuestas={}, misApuestasGuardadas={};
 
-// Timer fijo 60 min - usa backend si existe, si no 60 min local
+// Usar hora del servidor y guardarla para que no se reinicie
 let cierre;
-if(cierreISO){
-  try{ cierre=new Date(cierreISO); if(isNaN(cierre.getTime())) throw 0; }catch(e){ cierre=new Date(Date.now()+60*60*1000); }
-}else{
-  cierre=new Date(Date.now()+60*60*1000);
+try{
+  cierre = new Date((cierreISO||'').replace(' ','T'));
+  if(isNaN(cierre.getTime())) throw 0;
+}catch(e){
+  cierre = new Date(Date.now()+60*60*1000);
 }
-// Si el cierre ya pasó o es más de 61 min (bug 239), resetea a 60
-let diffCheck=(cierre-new Date())/1000/60;
-if(diffCheck<=0 || diffCheck>61){ cierre=new Date(Date.now()+60*60*1000); }
+// Si hay un cierre guardado para este periodo, respetarlo
+let key='cierre_'+periodoId;
+let saved=localStorage.getItem(key);
+if(saved){
+  let d=new Date(saved);
+  if(!isNaN(d.getTime()) && d>new Date() && d < new Date(Date.now()+62*60*1000)){
+    cierre=d;
+  }
+}
+// Solo si el cierre ya paso o es absurdo >62min, crear nuevo
+let diffMin=(cierre-new Date())/1000/60;
+if(diffMin<=0 || diffMin>62){
+  cierre=new Date(Date.now()+60*60*1000);
+  localStorage.setItem(key,cierre.toISOString());
+}else{
+  localStorage.setItem(key,cierre.toISOString());
+}
 
 const grid=document.getElementById('grid');
 animales.forEach(a=>{
@@ -223,9 +228,7 @@ function mostrarSalaConteo(){
 function mostrarResultado(){
  document.getElementById('modalSala').style.display='none';
  fetch('/api/ultimo-resultado').then(r=>r.json()).then(d=>{
-  let idGanador=d.ganador!==null? parseInt(d.ganador)+1 : (Math.floor(Math.random()*25)+1);
-  // backend guarda 0-24, frontend es 1-25
-  if(d.ganador!==null && d.ganador<25) idGanador=d.ganador+1;
+  let idGanador = d.ganador!==null? parseInt(d.ganador)+1 : (Math.floor(Math.random()*25)+1);
   let g=animales.find(x=>x[0]==idGanador) || animales[6];
   document.getElementById('ganadorEmoji').innerText=g[2];
   document.getElementById('ganadorNombre').innerText=g[1].toUpperCase();
@@ -244,8 +247,8 @@ function volverSala(){
  document.getElementById('modalResultado').style.display='none';
  document.getElementById('modalSala').style.display='none';
  apuestas={}; misApuestasGuardadas={}; document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected')); calc();
- // NO recarga la página, solo resetea cierre a 60 min
  cierre=new Date(Date.now()+60*60*1000);
+ localStorage.setItem(key,cierre.toISOString());
  fetch('/api/saldo').then(r=>r.json()).then(s=>{ saldoActual=s.saldo; document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2); });
  cargarHistorial();
 }
@@ -263,19 +266,19 @@ function cargarHistorial(){
  });
 }
 cargarHistorial();
-
-// UNICO TIMER - no duplica animales
-let timerInterval=setInterval(()=>{
+setInterval(()=>{
   let diff=Math.max(0,Math.floor((cierre-new Date())/1000));
   let mm=String(Math.floor(diff/60)).padStart(2,'0'); let ss=String(diff%60).padStart(2,'0');
   let txt=mm+':'+ss;
   document.getElementById('timer').innerText=txt;
-  let cd=document.getElementById('countdownSala');
-  if(cd) cd.innerText=txt;
-  if(diff<=0){ clearInterval(timerInterval); mostrarResultado(); cierre=new Date(Date.now()+60*60*1000); timerInterval=setInterval(arguments.callee,1000); }
+  let cd=document.getElementById('countdownSala'); if(cd) cd.innerText=txt;
+  if(diff<=0){
+    mostrarResultado();
+    cierre=new Date(Date.now()+60*60*1000);
+    localStorage.setItem(key,cierre.toISOString());
+  }
 },1000);
 
-// recarga y retiro (igual)
 let montoRecarga=50; const modalRecarga=document.getElementById('modalRecarga');
 function abrirRecarga(){ document.getElementById('saldoModal').innerText='S/ '+saldoActual.toFixed(2); modalRecarga.style.display='flex'; }
 function cerrarRecarga(){ modalRecarga.style.display='none'; }
