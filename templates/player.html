@@ -228,7 +228,7 @@ function mostrarSalaConteo(){
 function mostrarResultado(){
  document.getElementById('modalSala').style.display='none';
  fetch('/api/ultimo-resultado').then(r=>r.json()).then(d=>{
-  let idGanador = d.ganador!==null? parseInt(d.ganador)+1 : (Math.floor(Math.random()*25)+1);
+  let idGanador = d.ganador!==null? parseInt(d.ganador) : (Math.floor(Math.random()*25)+1);
   let g=animales.find(x=>x[0]==idGanador) || animales[6];
   document.getElementById('ganadorEmoji').innerText=g[2];
   document.getElementById('ganadorNombre').innerText=g[1].toUpperCase();
@@ -257,7 +257,7 @@ function cargarHistorial(){
    let cont=document.getElementById('historialAnimales'); cont.innerHTML='';
    if(!h || h.length==0){ cont.innerHTML='<small style="color:#555">Aún no hay sorteos</small>'; return; }
    h.slice(0,20).forEach(row=>{
-     let id=row.animal_ganador+1; let a=animales.find(x=>x[0]==id); if(!a) return;
+     let id=row.animal_ganador; let a=animales.find(x=>x[0]==id); if(!a) return;
      let div=document.createElement('div');
      div.style.cssText='background:#111;border:1px solid #333;border-radius:10px;padding:6px 8px;text-align:center;min-width:62px;flex-shrink:0';
      div.innerHTML=`<div style="font-size:22px">${a[2]}</div><div style="font-size:8px;color:#ffcc4d">${a[1]}</div><div style="font-size:9px;color:#aaa">#${String(a[0]).padStart(2,'0')}</div>`;
