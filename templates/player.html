@@ -165,40 +165,21 @@ Titular: <b>Edwin Salas</b>
 <div id="listaMisRetiros" style="margin-top:12px;font-size:11px"></div>
 </div>
 </div>
+
 <script>
-// TIMER FIX QUE NO SE REINICIA AL REFRESCAR
+// === FIX GLOBAL - TIEMPO IGUAL PARA TODOS Y SIN ANIMALES PEGADOS ===
 let saldoActual=0; try{saldoActual=parseFloat("{{ saldo|default(0) }}")||0;}catch(e){}
-let cierreISO="{{ sorteo[1] if sorteo and sorteo|length>1 else '' }}";
 let periodoId="{{ sorteo[0] if sorteo else 0 }}";
 document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2);
 const animales=[[1,"Perro","🐶"],[2,"Gato","🐱"],[3,"Ratón","🐭"],[4,"Conejo","🐰"],[5,"Zorro","🦊"],[6,"Tigre","🐯"],[7,"León","🦁"],[8,"Elefante","🐘"],[9,"Mono","🐒"],[10,"Gallina","🐔"],[11,"Gallo","🐓"],[12,"Cerdo","🐷"],[13,"Vaca","🐄"],[14,"Caballo","🐴"],[15,"Alpaca","🦙"],[16,"Vicuña","🦙"],[17,"Cóndor","🦅"],[18,"Oso","🐻"],[19,"Puma","🦁"],[20,"Gallito","🐦"],[21,"Caimán","🐊"],[22,"Serpiente","🐍"],[23,"Rana","🐸"],[24,"Delfin","🐬"],[25,"Guacamayo","🦜"]];
 let monto=5, apuestas={}, misApuestasGuardadas={};
 
-// Usar hora del servidor y guardarla para que no se reinicie
-let cierre;
-try{
-  cierre = new Date((cierreISO||'').replace(' ','T'));
-  if(isNaN(cierre.getTime())) throw 0;
-}catch(e){
-  cierre = new Date(Date.now()+60*60*1000);
+// TIEMPO GLOBAL IGUAL PARA TODOS - Todos cierran a la misma hora en punto
+function getCierreGlobal(){
+  const unaHora = 60*60*1000;
+  return new Date(Math.ceil(Date.now() / unaHora) * unaHora);
 }
-// Si hay un cierre guardado para este periodo, respetarlo
-let key='cierre_'+periodoId;
-let saved=localStorage.getItem(key);
-if(saved){
-  let d=new Date(saved);
-  if(!isNaN(d.getTime()) && d>new Date() && d < new Date(Date.now()+62*60*1000)){
-    cierre=d;
-  }
-}
-// Solo si el cierre ya paso o es absurdo >62min, crear nuevo
-let diffMin=(cierre-new Date())/1000/60;
-if(diffMin<=0 || diffMin>62){
-  cierre=new Date(Date.now()+60*60*1000);
-  localStorage.setItem(key,cierre.toISOString());
-}else{
-  localStorage.setItem(key,cierre.toISOString());
-}
+let cierre = getCierreGlobal();
 
 const grid=document.getElementById('grid');
 animales.forEach(a=>{
@@ -246,10 +227,11 @@ function mostrarResultado(){
 function volverSala(){
  document.getElementById('modalResultado').style.display='none';
  document.getElementById('modalSala').style.display='none';
- apuestas={}; misApuestasGuardadas={}; document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected')); calc();
- cierre=new Date(Date.now()+60*60*1000);
- localStorage.setItem(key,cierre.toISOString());
- fetch('/api/saldo').then(r=>r.json()).then(s=>{ saldoActual=s.saldo; document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2); });
+ // LIMPIEZA TOTAL - Para que no vuelvan los mismos animales
+ apuestas={}; misApuestasGuardadas={};
+ document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+ calc();
+ cierre=getCierreGlobal();
  cargarHistorial();
 }
 function cargarHistorial(){
@@ -266,6 +248,8 @@ function cargarHistorial(){
  });
 }
 cargarHistorial();
+
+// TIMER GLOBAL - IGUAL PARA TODOS LOS USUARIOS - SIN LIMITE
 setInterval(()=>{
   let diff=Math.max(0,Math.floor((cierre-new Date())/1000));
   let mm=String(Math.floor(diff/60)).padStart(2,'0'); let ss=String(diff%60).padStart(2,'0');
@@ -273,33 +257,16 @@ setInterval(()=>{
   document.getElementById('timer').innerText=txt;
   let cd=document.getElementById('countdownSala'); if(cd) cd.innerText=txt;
   if(diff<=0){
-  mostrarResultado();
-  cierre = new Date(Date.now() + 60*60*1000);
-  localStorage.setItem(key,cierre.toISOString());
-  
-  // === ESTO ES LO QUE TE FALTA PARA QUE NO VUELVAN LOS MISMOS ANIMALES ===
-  // 1. Deseleccionar visualmente
-  document.querySelectorAll('.animal, .card-animal, [data-animal]').forEach(el=>{
-    el.classList.remove('selected','seleccionado','active','ring-2','bg-yellow-400');
-  });
-  // 2. Borrar memoria de apuesta
-  localStorage.removeItem('animalesSeleccionados');
-  localStorage.removeItem('apuesta_actual');
-  localStorage.removeItem('seleccion');
-  localStorage.removeItem('carrito');
-  
-  // 3. Resetear la variable que guarda los animales (la que tengas)
-  try{
-    if(typeof seleccionados !== 'undefined') seleccionados = [];
-    if(typeof animalesSeleccionados !== 'undefined') animalesSeleccionados = [];
-    if(typeof apuesta !== 'undefined') apuesta = [];
-    if(typeof carrito !== 'undefined') carrito = [];
-    if(typeof actualizarUI === 'function') actualizarUI();
-  }catch(e){}
-  
-  cargarHistorial();
-}
-
+    mostrarResultado();
+    // NUEVA SALA GLOBAL PARA TODOS - NO GUARDA EN localStorage POR USUARIO
+    cierre = getCierreGlobal();
+    // LIMPIAR TODO PARA NUEVA RONDA - QUEDE PARA ELEGIR DE NUEVO
+    apuestas={};
+    misApuestasGuardadas={};
+    document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
+    calc();
+    cargarHistorial();
+  }
 },1000);
 
 let montoRecarga=50; const modalRecarga=document.getElementById('modalRecarga');
