@@ -274,13 +274,32 @@ setInterval(()=>{
   let cd=document.getElementById('countdownSala'); if(cd) cd.innerText=txt;
   if(diff<=0){
   mostrarResultado();
-  // Crea nueva sala automáticamente sin detener la app
   cierre = new Date(Date.now() + 60*60*1000);
   localStorage.setItem(key,cierre.toISOString());
-  cargarHistorial(); // Recarga el historial para que no se quede la última apuesta pegada
-  // Si quieres que NUNCA muestre 00:00, descomenta la siguiente linea:
-  // location.reload();
+  
+  // === ESTO ES LO QUE TE FALTA PARA QUE NO VUELVAN LOS MISMOS ANIMALES ===
+  // 1. Deseleccionar visualmente
+  document.querySelectorAll('.animal, .card-animal, [data-animal]').forEach(el=>{
+    el.classList.remove('selected','seleccionado','active','ring-2','bg-yellow-400');
+  });
+  // 2. Borrar memoria de apuesta
+  localStorage.removeItem('animalesSeleccionados');
+  localStorage.removeItem('apuesta_actual');
+  localStorage.removeItem('seleccion');
+  localStorage.removeItem('carrito');
+  
+  // 3. Resetear la variable que guarda los animales (la que tengas)
+  try{
+    if(typeof seleccionados !== 'undefined') seleccionados = [];
+    if(typeof animalesSeleccionados !== 'undefined') animalesSeleccionados = [];
+    if(typeof apuesta !== 'undefined') apuesta = [];
+    if(typeof carrito !== 'undefined') carrito = [];
+    if(typeof actualizarUI === 'function') actualizarUI();
+  }catch(e){}
+  
+  cargarHistorial();
 }
+
 },1000);
 
 let montoRecarga=50; const modalRecarga=document.getElementById('modalRecarga');
