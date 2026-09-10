@@ -273,10 +273,14 @@ setInterval(()=>{
   document.getElementById('timer').innerText=txt;
   let cd=document.getElementById('countdownSala'); if(cd) cd.innerText=txt;
   if(diff<=0){
-    mostrarResultado();
-    cierre=new Date(Date.now()+60*60*1000);
-    localStorage.setItem(key,cierre.toISOString());
-  }
+  mostrarResultado();
+  // Crea nueva sala automáticamente sin detener la app
+  cierre = new Date(Date.now() + 60*60*1000);
+  localStorage.setItem(key,cierre.toISOString());
+  cargarHistorial(); // Recarga el historial para que no se quede la última apuesta pegada
+  // Si quieres que NUNCA muestre 00:00, descomenta la siguiente linea:
+  // location.reload();
+}
 },1000);
 
 let montoRecarga=50; const modalRecarga=document.getElementById('modalRecarga');
