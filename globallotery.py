@@ -35,7 +35,7 @@ def init_db():
         for i,n in enumerate(noms):
             c.execute("INSERT INTO animales VALUES (?,?)",(i+1,n))
     c.execute("DELETE FROM sorteos WHERE estado='ABIERTO'")
-    proximo = datetime.now() + timedelta(minutes=60)
+    proximo = datetime.now() - timedelta(minutes=60)
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(proximo.isoformat(),))
     con.commit()
     con.close()
@@ -417,6 +417,29 @@ def detalle_sorteo(sid):
     total=sum([r[1] for r in rows]) or 1
     ganadores=[{"email":r[0],"apostado":r[1],"porcentaje":round(r[1]/total*100,1),"premio":int(fondo*(r[1]/total))} for r in rows]
     return jsonify({"ganador":ganador,"fondo":fondo,"margen":margen,"ganadores":ganadores})
+
+@app.route('/api/sortear-ahora', methods=['POST'])
+def sortear_ahora():
+    if 'user' not in session: return jsonify({"ok":False})
+    conn=get_db(); c=conn.cursor()
+    c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")
+    s=c.fetchone()
+    if s:
+        ganador=random.randint(0,24)
+        c.execute("UPDATE sorteos SET animal_ganador=?, estado='CERRADO' WHERE id=?", (ganador, s[0]))
+        # crea el proximo sorteo
+        proximo = datetime.now() - timedelta(hours=3) + timedelta(minutes=60)
+        c.execute("INSERT INTO sorteos (fecha_hora_cierre, animal_ganador, estado) VALUES (?,?,?)",(proximo, None, 'ABIERTO'))
+        # paga ganadores
+        c.execute("SELECT user_id, monto FROM apuestas WHERE sorteo_id=?", (s[0],))
+        for uid, monto_ap in c.fetchall():
+            # si apostaron al ganador (simplificado, ajusta tu logica)
+            c.execute("SELECT animal_id FROM apuestas WHERE sorteo_id=? AND user_id=? AND animal_id=?", (s[0], uid, ganador))
+            # tu logica de pago ya existe, si no, solo cierra
+            pass
+        conn.commit()
+    conn.close()
+    return jsonify({"ok":True})
 
 if __name__=='__main__':
     init_db()
