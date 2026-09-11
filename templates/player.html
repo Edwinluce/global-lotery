@@ -312,9 +312,7 @@ async function cargarMisRetiros(){
   let pend=j.filter(x=>x.estado=='pendiente'); if(pend.length>0) document.getElementById('misRetirosTxt').innerText='⏳ Retiro pendiente S/'+pend[0].monto;
 }
 cargarMisRetiros();
-fetch('/api/mis-apuestas-actuales').then(r=>r.json()).then(d=>{
- if(d.apuestas && Object.keys(d.apuestas).length>0){ misApuestasGuardadas=d.apuestas; for(let id in misApuestasGuardadas){ let card=document.querySelector(`.card[data-id="${id}"]`); if(card) card.classList.add('selected'); } calc(); mostrarSalaConteo(); }
-});
+
 </script>
 </body>
 </html>
