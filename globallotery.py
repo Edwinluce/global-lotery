@@ -18,6 +18,12 @@ def db():
 def hash_pass(p):
     return hashlib.sha256(p.encode()).hexdigest()
 
+# === FIX GLOBAL - CIERRE A LA HORA EN PUNTO IGUAL PARA TODOS ===
+def get_proximo_cierre_global():
+    ahora = datetime.now()
+    proximo = ahora.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    return proximo
+
 def init_db():
     con = db()
     c = con.cursor()
@@ -35,7 +41,7 @@ def init_db():
         for i,n in enumerate(noms):
             c.execute("INSERT INTO animales VALUES (?,?)",(i+1,n))
     c.execute("DELETE FROM sorteos WHERE estado='ABIERTO'")
-    proximo = datetime.now() - timedelta(minutes=60)
+    proximo = get_proximo_cierre_global()
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(proximo.isoformat(),))
     con.commit()
     con.close()
@@ -89,13 +95,12 @@ def sortear():
     else:
         c.execute("UPDATE sorteos SET recaudacion=?, fondo_premios=?, margen_plataforma=?, jackpot=?, estado='FINALIZADO' WHERE id=?", (recaud,fondo,margen,fondo,sid))
     con.commit()
-    _, tiempo_min = get_config()
-    proximo=datetime.now()+timedelta(minutes=tiempo_min)
+    proximo=get_proximo_cierre_global()
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')", (proximo.isoformat(),))
     con.commit(); con.close()
 
 scheduler=BackgroundScheduler()
-scheduler.add_job(sortear,'interval', minutes=1)
+scheduler.add_job(sortear,'interval', seconds=20)
 scheduler.start()
 
 @app.route('/login')
@@ -140,24 +145,19 @@ def player():
     con=db(); c=con.cursor()
     c.execute("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")
     s=c.fetchone()
-    if s:
-        try:
-            cierre = datetime.fromisoformat(s[1])
-            diff_min = (cierre - datetime.now()).total_seconds() / 60
-            if diff_min > tiempo_min + 2:
-                nuevo_cierre = datetime.now() + timedelta(minutes=tiempo_min)
-                c.execute("UPDATE sorteos SET fecha_hora_cierre=? WHERE id=?", (nuevo_cierre.isoformat(), s[0]))
-                con.commit()
-                c.execute("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")
-                s=c.fetchone()
-        except:
-            pass
+    if not s:
+        proximo = get_proximo_cierre_global()
+        c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(proximo.isoformat(),))
+        con.commit()
+        c.execute("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")
+        s=c.fetchone()
     c.execute("SELECT saldo,email FROM usuarios WHERE id=?", (session['user'],)); u=c.fetchone()
     c.execute("SELECT * FROM animales"); anims=c.fetchall()
     c.execute("SELECT fecha_hora_cierre, animal_ganador FROM sorteos WHERE estado IN ('PAGADO','FINALIZADO') ORDER BY id DESC LIMIT 24"); historial=c.fetchall()
     c.execute("SELECT fecha_hora_cierre, animal_ganador, fondo_premios FROM sorteos WHERE estado='PAGADO' ORDER BY id DESC LIMIT 20"); resultados=c.fetchall()
     con.close()
     return render_template('player.html', sorteo=s, animales=anims, historial=historial, resultados=resultados, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP, bcp_cci=MI_CCI_BCP, bcp_link=MI_LINK_IZIPAY, bcp_nombre=MI_NOMBRE_BCP)
+
 @app.route('/api/apostar-multiple', methods=['POST'])
 def apostar_multiple():
     if 'user' not in session: return jsonify({"ok":False})
@@ -168,19 +168,17 @@ def apostar_multiple():
     con=db(); c=con.cursor(); c.execute("SELECT saldo FROM usuarios WHERE id=?", (uid,)); saldo=c.fetchone()[0]
     total=sum([int(v) for v in data.values()])
     if saldo < total: con.close(); return jsonify({"ok":False,"msg":f"Saldo insuficiente S/{saldo}. BCP {MI_CUENTA_BCP}"})
-    c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"); sid_row=c.fetchone()
-    if not sid_row:
-        _, tiempo_min = get_config()
-        proximo=datetime.now()+timedelta(minutes=tiempo_min)
+    c.execute("SELECT id, fecha_hora_cierre FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"); sid_row=c.fetchone()
+    if not sid_row or datetime.fromisoformat(sid_row[1]) <= datetime.now():
+        proximo=get_proximo_cierre_global()
         c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')", (proximo.isoformat(),))
-        sid_row=(c.lastrowid,)
+        sid_row=(c.lastrowid, proximo.isoformat())
     sid=sid_row[0]
     for animal_id, monto in data.items():
         c.execute("INSERT INTO apuestas (id,sorteo_id,usuario_id,animal_id,monto,fecha) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), sid, uid, int(animal_id), int(monto), datetime.now().isoformat()))
     c.execute("UPDATE usuarios SET saldo=saldo-? WHERE id=?", (total, uid))
     con.commit(); con.close()
     return jsonify({"ok":True})
-
 @app.route('/api/recarga-bcp', methods=['POST'])
 @app.route('/api/recarga-tarjeta', methods=['POST'])
 def recarga_tarjeta():
@@ -309,10 +307,9 @@ def api_pausar_sala():
 def api_activar_sala():
     if not session.get('admin'): return jsonify({"ok":False})
     set_config('pausado','0')
-    _, tiempo_min = get_config()
     con=db(); c=con.cursor()
     c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"); s=c.fetchone()
-    nuevo=datetime.now()+timedelta(minutes=tiempo_min)
+    nuevo=get_proximo_cierre_global()
     if s: c.execute("UPDATE sorteos SET fecha_hora_cierre=? WHERE id=?",(nuevo.isoformat(), s[0]))
     else: c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(nuevo.isoformat(),))
     con.commit(); con.close()
@@ -325,7 +322,7 @@ def api_set_tiempo():
     if m not in [15,30,60]: m=60
     set_config('tiempo_min', str(m))
     con=db(); c=con.cursor()
-    nuevo=datetime.now()+timedelta(minutes=m)
+    nuevo=get_proximo_cierre_global()
     c.execute("DELETE FROM sorteos WHERE estado='ABIERTO'")
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(nuevo.isoformat(),))
     con.commit(); con.close()
@@ -336,8 +333,7 @@ def api_reiniciar_ganancias():
     if not session.get('admin'): return jsonify({"ok":False})
     con=db(); c=con.cursor()
     c.execute("DELETE FROM apuestas"); c.execute("DELETE FROM sorteos")
-    _, tiempo_min = get_config()
-    nuevo=datetime.now()+timedelta(minutes=tiempo_min)
+    nuevo=get_proximo_cierre_global()
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(nuevo.isoformat(),))
     con.commit(); con.close()
     return jsonify({"ok":True})
@@ -366,8 +362,7 @@ def admin_forzar_sorteo():
             for uid, apostado in rows:
                 premio=int((rec*0.75)*(apostado/total)) if total>0 else 0
                 if premio>0: c.execute("UPDATE usuarios SET saldo=saldo+? WHERE id=?", (premio, uid))
-    _, tiempo_min = get_config()
-    proximo=datetime.now()+timedelta(minutes=tiempo_min)
+    proximo=get_proximo_cierre_global()
     c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')", (proximo.isoformat(),))
     con.commit(); con.close()
     return jsonify({"ok":True,"msg":f"Forzado ganador {ganador}"})
@@ -392,8 +387,14 @@ def ultimo_resultado():
 def mis_apuestas_actuales():
     if 'user' not in session: return jsonify({"apuestas":{}})
     con=db(); c=con.cursor()
-    c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"); s=c.fetchone()
+    c.execute("SELECT id, fecha_hora_cierre FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"); s=c.fetchone()
     if not s: con.close(); return jsonify({"apuestas":{}})
+    try:
+        if datetime.fromisoformat(s[1]) <= datetime.now():
+            con.close()
+            return jsonify({"apuestas":{}})
+    except:
+        pass
     sid=s[0]
     c.execute("SELECT animal_id, monto FROM apuestas WHERE sorteo_id=? AND usuario_id=?", (sid, session['user']))
     rows=c.fetchall(); con.close()
@@ -417,29 +418,6 @@ def detalle_sorteo(sid):
     total=sum([r[1] for r in rows]) or 1
     ganadores=[{"email":r[0],"apostado":r[1],"porcentaje":round(r[1]/total*100,1),"premio":int(fondo*(r[1]/total))} for r in rows]
     return jsonify({"ganador":ganador,"fondo":fondo,"margen":margen,"ganadores":ganadores})
-
-@app.route('/api/sortear-ahora', methods=['POST'])
-def sortear_ahora():
-    if 'user' not in session: return jsonify({"ok":False})
-    conn=get_db(); c=conn.cursor()
-    c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")
-    s=c.fetchone()
-    if s:
-        ganador=random.randint(1,25)
-        c.execute("UPDATE sorteos SET animal_ganador=?, estado='CERRADO' WHERE id=?", (ganador, s[0]))
-        # crea el proximo sorteo
-        proximo = datetime.now() - timedelta(hours=3) + timedelta(minutes=60)
-        c.execute("INSERT INTO sorteos (fecha_hora_cierre, animal_ganador, estado) VALUES (?,?,?)",(proximo, None, 'ABIERTO'))
-        # paga ganadores
-        c.execute("SELECT user_id, monto FROM apuestas WHERE sorteo_id=?", (s[0],))
-        for uid, monto_ap in c.fetchall():
-            # si apostaron al ganador (simplificado, ajusta tu logica)
-            c.execute("SELECT animal_id FROM apuestas WHERE sorteo_id=? AND user_id=? AND animal_id=?", (s[0], uid, ganador))
-            # tu logica de pago ya existe, si no, solo cierra
-            pass
-        conn.commit()
-    conn.close()
-    return jsonify({"ok":True})
 
 if __name__=='__main__':
     init_db()
