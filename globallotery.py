@@ -222,24 +222,45 @@ def mis_retiros():
 
 @app.route('/api/retiros')
 def api_listar_retiros():
-    if not session.get('admin'): return jsonify([])
-    con=db(); c=con.cursor()
+    if not session.get('admin'):
+        return jsonify([])
     try:
-        # FIX: LEFT JOIN + CAST para que encuentre usuario aunque sea TEXT
+        con=db(); c=con.cursor()
         c.execute("""
-            SELECT r.id, r.monto, r.banco_info, r.estado, r.fecha, COALESCE(u.email, r.user_id)
+            SELECT r.id, r.monto, r.banco_info, r.estado, r.fecha, u.email
             FROM retiros r
             LEFT JOIN usuarios u ON CAST(u.id AS TEXT)=CAST(r.user_id AS TEXT)
             ORDER BY r.id DESC
         """)
-        rows=c.fetchall(); con.close()
-        return jsonify([{"id":r[0],"monto":r[1],"banco_info":r[2],"estado":r[3],"fecha":r[4][5:16] if r[4] else "","usuario":r[5]} for r in rows])
+        rows=c.fetchall()
+        con.close()
+        lista=[]
+        for r in rows:
+            try:
+                fecha = str(r[4])[5:16] if r[4] else ""
+            except:
+                fecha = str(r[4]) if r[4] else ""
+            lista.append({
+                "id": r[0],
+                "monto": r[1],
+                "banco_info": r[2],
+                "estado": r[3],
+                "fecha": fecha,
+                "usuario": r[5] if r[5] else f"ID:{r[0]}"
+            })
+        return jsonify(lista)
     except Exception as e:
-        # Si falla el JOIN, devuelve al menos los retiros sin usuario
-        c.execute("SELECT id, monto, banco_info, estado, fecha, user_id FROM retiros ORDER BY id DESC")
-        rows=c.fetchall(); con.close()
-        return jsonify([{"id":r[0],"monto":r[1],"banco_info":r[2],"estado":r[3],"fecha":r[4][5:16] if r[4] else "","usuario":f"ID:{r[5]}"} for r in rows])
-
+        print(f"ERROR RETIROS: {e}")
+        try:
+            con=db(); c=con.cursor()
+            c.execute("SELECT id, monto, banco_info, estado, fecha, user_id FROM retiros ORDER BY id DESC")
+            rows=c.fetchall()
+            con.close()
+            return jsonify([{"id":r[0],"monto":r[1],"banco_info":r[2],"estado":r[3],"fecha":str(r[4]),"usuario":f"ID:{r[5]}"} for r in rows])
+        except Exception as e2:
+            print(f"ERROR 2 RETIROS: {e2}")
+            return jsonify({"error": str(e2)})
+        
 @app.route('/api/retiro/<int:rid>/<string:accion>', methods=['POST'])
 def api_accion_retiro(rid,accion):
     if not session.get('admin'): return jsonify({"ok":False})
