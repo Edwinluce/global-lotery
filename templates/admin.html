@@ -158,22 +158,28 @@ function pintarAnimales(){
 async function cargarRetiros(){
   let tbody=document.getElementById('listaRetiros');
   tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center">Cargando...</td></tr>';
-  let r=await fetch('/api/retiros'); let j=await r.json();
-  if(j.length==0){ tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center">Sin solicitudes</td></tr>'; return; }
-  tbody.innerHTML=j.map(x=>`<tr style="border-bottom:1px solid #222">
-    <td style="padding:8px">${x.fecha}</td>
-    <td style="padding:8px"><b>${x.usuario}</b></td>
-    <td style="padding:8px"><b style="color:#ff4757">S/ ${x.monto}</b></td>
-    <td style="padding:8px;max-width:150px;word-break:break-all">${x.banco_info}</td>
-    <td style="padding:8px"><span class="badge ${x.estado}">${x.estado}</span></td>
-    <td style="padding:8px">${x.estado=='pendiente'?`<button class="btn btn-green" onclick="aprobarRetiro(${x.id},'aprobar')">✅ Aprobar y Descontar</button> <button class="btn btn-red" onclick="aprobarRetiro(${x.id},'rechazar')">X</button>`:x.estado}</td>
-  </tr>`).join('');
-  // Actualiza contador en tab
-  let pend=j.filter(x=>x.estado=='pendiente').length;
-  document.getElementById('tabBtnRetiros').innerText= pend>0? `💸 Retiros (${pend})` : `💸 Retiros`;
+  try{
+    let r=await fetch('/api/retiros');
+    let j=await r.json();
+    console.log('retiros',j);
+    if(!Array.isArray(j)){ tbody.innerHTML='<tr><td colspan="6">Error: '+JSON.stringify(j)+'</td></tr>'; return; }
+    if(j.length==0){ tbody.innerHTML='<tr><td colspan="6" style="padding:20px;text-align:center">Sin solicitudes - Recuerda que Render borra la DB en cada push, crea una nueva</td></tr>'; return; }
+    tbody.innerHTML=j.map(x=>`<tr style="border-bottom:1px solid #222">
+      <td style="padding:8px">${x.fecha||''}</td>
+      <td style="padding:8px"><b>${x.usuario||''}</b></td>
+      <td style="padding:8px"><b style="color:#ff4757">S/ ${x.monto}</b></td>
+      <td style="padding:8px;max-width:150px;word-break:break-all">${x.banco_info||''}</td>
+      <td style="padding:8px"><span class="badge ${x.estado}">${x.estado}</span></td>
+      <td style="padding:8px">${x.estado=='pendiente'?`<button class="btn btn-green" onclick="aprobarRetiro(${x.id},'aprobar')">✅ Aprobar</button> <button class="btn btn-red" onclick="aprobarRetiro(${x.id},'rechazar')">X</button>`:x.estado}</td>
+    </tr>`).join('');
+    let pend=j.filter(x=>x.estado=='pendiente').length;
+    document.getElementById('tabBtnRetiros').innerText= pend>0? `💸 Retiros (${pend})` : `💸 Retiros`;
+  }catch(e){
+    tbody.innerHTML='<tr><td colspan="6">Error JS: '+e+'</td></tr>';
+  }
 }
 async function aprobarRetiro(id,acc){
- if(acc=='aprobar' &&!confirm('¿YA LE YAPEASTE AL CLIENTE? Se descontará de su saldo.')) return;
+ if(acc=='aprobar' &&!confirm('¿YA LE YAPEASTE? Se descontará saldo.')) return;
  if(acc=='rechazar' &&!confirm('¿Rechazar?')) return;
  let res=await fetch(`/api/retiro/${id}/${acc}`,{method:'POST'}); let j=await res.json();
  if(!j.ok) alert(j.msg||'Error');

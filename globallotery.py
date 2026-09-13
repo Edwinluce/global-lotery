@@ -40,11 +40,13 @@ def init_db():
         noms=["Perro","Gato","Ratón","Conejo","Zorro","Tigre","León","Elefante","Mono","Gallina","Gallo","Cerdo","Vaca","Caballo","Alpaca","Vicuña","Cóndor","Oso","Puma","Gallito","Caimán","Serpiente","Rana","Delfin","Guacamayo"]
         for i,n in enumerate(noms):
             c.execute("INSERT INTO animales VALUES (?,?)",(i+1,n))
-    c.execute("DELETE FROM sorteos WHERE estado='ABIERTO'")
-    proximo = get_proximo_cierre_global()
-    c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(proximo.isoformat(),))
+    c.execute("SELECT id FROM sorteos WHERE estado='ABIERTO' LIMIT 1")
+    if not c.fetchone():
+        proximo = get_proximo_cierre_global()
+        c.execute("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')",(proximo.isoformat(),))
     con.commit()
-    con.close()
+    con.close()   
+    
 
 def get_config():
     try:
@@ -224,42 +226,21 @@ def mis_retiros():
 def api_listar_retiros():
     if not session.get('admin'):
         return jsonify([])
-    try:
-        con=db(); c=con.cursor()
-        c.execute("""
-            SELECT r.id, r.monto, r.banco_info, r.estado, r.fecha, u.email
-            FROM retiros r
-            LEFT JOIN usuarios u ON CAST(u.id AS TEXT)=CAST(r.user_id AS TEXT)
-            ORDER BY r.id DESC
-        """)
-        rows=c.fetchall()
-        con.close()
-        lista=[]
-        for r in rows:
-            try:
-                fecha = str(r[4])[5:16] if r[4] else ""
-            except:
-                fecha = str(r[4]) if r[4] else ""
-            lista.append({
-                "id": r[0],
-                "monto": r[1],
-                "banco_info": r[2],
-                "estado": r[3],
-                "fecha": fecha,
-                "usuario": r[5] if r[5] else f"ID:{r[0]}"
-            })
-        return jsonify(lista)
-    except Exception as e:
-        print(f"ERROR RETIROS: {e}")
-        try:
-            con=db(); c=con.cursor()
-            c.execute("SELECT id, monto, banco_info, estado, fecha, user_id FROM retiros ORDER BY id DESC")
-            rows=c.fetchall()
-            con.close()
-            return jsonify([{"id":r[0],"monto":r[1],"banco_info":r[2],"estado":r[3],"fecha":str(r[4]),"usuario":f"ID:{r[5]}"} for r in rows])
-        except Exception as e2:
-            print(f"ERROR 2 RETIROS: {e2}")
-            return jsonify({"error": str(e2)})
+    con=db(); c=con.cursor()
+    c.execute("SELECT id, monto, banco_info, estado, fecha, user_id FROM retiros ORDER BY id DESC")
+    rows=c.fetchall()
+    con.close()
+    out=[]
+    for r in rows:
+        out.append({
+            "id": r[0],
+            "monto": r[1],
+            "banco_info": r[2],
+            "estado": r[3],
+            "fecha": str(r[4])[:16] if r[4] else "",
+            "usuario": f"ID:{r[5]}"
+        })
+    return jsonify(out)
         
 @app.route('/api/retiro/<int:rid>/<string:accion>', methods=['POST'])
 def api_accion_retiro(rid,accion):
