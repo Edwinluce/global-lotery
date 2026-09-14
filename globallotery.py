@@ -226,42 +226,64 @@ def mis_retiros():
 def api_retiros():
     try:
         con=db(); c=con.cursor()
-        # vemos que columnas tiene realmente tu tabla
         c.execute("SELECT * FROM retiros LIMIT 1")
         cols = [d[0] for d in c.description] if c.description else []
-
         c.execute("SELECT * FROM retiros ORDER BY id DESC")
-        rows = c.fetchall()
-
+        rows=c.fetchall()
         data=[]
         for r in rows:
-            row_dict = dict(zip(cols, r))
-            # buscamos el usuario con cualquier nombre posible
-            usuario_id = row_dict.get('user_id') or row_dict.get('usuario_id') or row_dict.get('user_id') or row_dict.get('usuario') or ''
-            # buscamos email si existe
-            email = usuario_id
+            rd=dict(zip(cols, r))
+            uid = rd.get('user_id') or rd.get('usuario_id') or rd.get('user_id')
+            email = str(uid)
             try:
-                if usuario_id:
+                if uid:
                     c2=con.cursor()
-                    c2.execute("SELECT email FROM usuarios WHERE id=?", (usuario_id,))
+                    c2.execute("SELECT email FROM usuarios WHERE id=?", (uid,))
                     u=c2.fetchone()
                     if u: email=u[0]
-            except:
-                pass
-
+            except: pass
             data.append({
-                "id": row_dict.get('id'),
-                "fecha": row_dict.get('fecha') or row_dict.get('created_at') or '',
-                "usuario": email or f"ID {usuario_id}",
-                "monto": row_dict.get('monto', 0),
-                "yape_plin": row_dict.get('banco_info') or row_dict.get('yape_plin') or row_dict.get('metodo_pago') or row_dict.get('banco') or '',
-                "estado": row_dict.get('estado','pendiente')
+                "id": rd.get('id'),
+                "fecha": rd.get('fecha') or '',
+                "usuario": email,
+                "monto": rd.get('monto',0),
+                "banco_info": rd.get('banco_info') or rd.get('yape_plin') or rd.get('banco') or '',
+                "yape_plin": rd.get('banco_info') or rd.get('yape_plin') or '',
+                "estado": rd.get('estado','pendiente')
             })
         con.close()
         return jsonify(data)
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok":False,"error":str(e)}),500
 
+@app.route("/api/retiro/<int:rid>/<acc>", methods=["POST"])
+def accion_retiro(rid, acc):
+    try:
+        con=db(); c=con.cursor()
+        c.execute("SELECT * FROM retiros WHERE id=?", (rid,))
+        if not c.description: return jsonify({"ok":False,"msg":"No existe"})
+        cols=[d[0] for d in c.description]
+        row=c.fetchone()
+        if not row: return jsonify({"ok":False,"msg":"No existe"})
+        rd=dict(zip(cols,row))
+        uid = rd.get('user_id') or rd.get('usuario_id')
+        monto = rd.get('monto',0)
+
+        if acc=='aprobar':
+            c.execute("UPDATE retiros SET estado='aprobado' WHERE id=?", (rid,))
+            msg="Aprobado ✅ - Recuerda que ya yapeaste"
+        else:
+            # al rechazar devolvemos saldo
+            if uid:
+                c.execute("UPDATE usuarios SET saldo = saldo +? WHERE id=?", (monto, uid))
+            c.execute("UPDATE retiros SET estado='rechazado' WHERE id=?", (rid,))
+            msg="Rechazado y saldo devuelto"
+
+        con.commit(); con.close()
+        return jsonify({"ok":True,"msg":msg})
+    except Exception as e:
+        return jsonify({"ok":False,"msg":str(e)}),500
+    
 @app.route('/api/retiro/<int:rid>/<string:accion>', methods=['POST'])
 def api_accion_retiro(rid,accion):
     if not session.get('admin'): return jsonify({"ok":False})
