@@ -204,48 +204,53 @@ def recarga_tarjeta():
 @app.route("/api/solicitar-retiro", methods=["POST"])
 def solicitar_retiro():
     try:
-        # verificar login
-        if "user_id" not in session and "usuario_id" not in session:
-            return jsonify({"ok": False, "msg": "No logueado"}), 401
+        print("SESSION ACTUAL:", dict(session)) # para ver en logs de Render
+        # buscar el usuario logueado con cualquier nombre posible
+        uid = session.get("user_id") or session.get("usuario_id") or session.get("id") or session.get("uid")
+        email_sess = session.get("email") or session.get("usuario") or session.get("user")
 
-        uid = session.get("user_id") or session.get("usuario_id") or session.get("id")
+        con=db(); c=con.cursor()
+
+        # si no tenemos id pero tenemos email, buscamos el id por email
+        if not uid and email_sess:
+            c.execute("SELECT id FROM usuarios WHERE email=?", (email_sess,))
+            r=c.fetchone()
+            if r: uid=r[0]
+
+        if not uid:
+            return jsonify({"ok": False, "msg": f"No logueado - sesión: {dict(session)}"}), 401
+
         data = request.get_json()
-        monto = int(data.get("monto",0))
-        yape = data.get("yape") or data.get("banco_info") or data.get("yape_plin") or ""
+        monto = int(float(data.get("monto",0)))
+        yape = data.get("yape") or data.get("banco_info") or data.get("yape_plin") or data.get("numero") or ""
 
         if monto < 10:
             return jsonify({"ok":False,"msg":"Mínimo S/10"})
 
-        con=db(); c=con.cursor()
         c.execute("SELECT saldo FROM usuarios WHERE id=?", (uid,))
         u=c.fetchone()
-        if not u or u[0] < monto:
-            return jsonify({"ok":False,"msg":"Saldo insuficiente"})
+        if not u or (u[0] or 0) < monto:
+            return jsonify({"ok":False,"msg":f"Saldo insuficiente. Tienes S/{u[0] if u else 0}"})
 
-        # ver que columnas tiene realmente la tabla retiros en Render
-        c.execute("SELECT * FROM retiros LIMIT 1")
-        cols = [d[0] for d in c.description] if c.description else []
-
-        # descontar saldo al momento de solicitar
+        # descontar al solicitar
         c.execute("UPDATE usuarios SET saldo = saldo -? WHERE id=?", (monto, uid))
 
-        # insertar con el nombre de columna que exista
+        c.execute("SELECT * FROM retiros LIMIT 1")
+        cols = [d[0] for d in c.description] if c.description else ["id","user_id","monto","banco_info","estado","fecha"]
+
         if "user_id" in cols:
             c.execute("INSERT INTO retiros (user_id, monto, banco_info, estado, fecha) VALUES (?,?,?,?, datetime('now','localtime'))", (uid, monto, yape, "pendiente"))
         elif "usuario_id" in cols:
             c.execute("INSERT INTO retiros (usuario_id, monto, banco_info, estado, fecha) VALUES (?,?,?,?, datetime('now','localtime'))", (uid, monto, yape, "pendiente"))
-        elif "usuario" in cols:
-            c.execute("INSERT INTO retiros (usuario, monto, banco_info, estado, fecha) VALUES (?,?,?,?, datetime('now','localtime'))", (uid, monto, yape, "pendiente"))
         else:
-            # si no sabemos, intentamos genérico
-            c.execute(f"INSERT INTO retiros ({cols[1]}, monto, banco_info, estado, fecha) VALUES (?,?,?,?, datetime('now','localtime'))", (uid, monto, yape, "pendiente"))
+            c.execute("INSERT INTO retiros (monto, banco_info, estado, fecha, user_id) VALUES (?,?,?,?,?)", (monto, yape, "pendiente", "now", uid))
 
         con.commit(); con.close()
-        return jsonify({"ok":True,"msg":"Solicitud enviada, pendiente de aprobación"})
+        return jsonify({"ok":True,"msg":"¡Solicitud enviada!"})
 
     except Exception as e:
         return jsonify({"ok":False,"msg":f"Error: {str(e)}"}),500
-    
+        
 @app.route('/api/mis-retiros')
 def mis_retiros():
     if 'user' not in session: return jsonify([])
