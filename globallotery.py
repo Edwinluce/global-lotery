@@ -224,8 +224,6 @@ def mis_retiros():
 
 @app.route("/api/retiros")
 def api_retiros():
-    if not session.get("is_admin"):
-        return jsonify({"ok": False, "msg": "No eres admin"}), 401
     try:
         con=db(); c=con.cursor()
         c.execute("""
@@ -248,7 +246,7 @@ def api_retiros():
         return jsonify(data)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-        
+
 @app.route('/api/retiro/<int:rid>/<string:accion>', methods=['POST'])
 def api_accion_retiro(rid,accion):
     if not session.get('admin'): return jsonify({"ok":False})
