@@ -226,21 +226,36 @@ def mis_retiros():
 def api_retiros():
     try:
         con=db(); c=con.cursor()
-        c.execute("""
-        SELECT r.id, r.fecha, u.email, r.monto, r.banco_info, r.estado, r.user_id
-        FROM retiros r
-        LEFT JOIN usuarios u ON u.id = r.user_id
-        ORDER BY r.id DESC
-        """)
+        # vemos que columnas tiene realmente tu tabla
+        c.execute("SELECT * FROM retiros LIMIT 1")
+        cols = [d[0] for d in c.description] if c.description else []
+
+        c.execute("SELECT * FROM retiros ORDER BY id DESC")
+        rows = c.fetchall()
+
         data=[]
-        for row in c.fetchall():
+        for r in rows:
+            row_dict = dict(zip(cols, r))
+            # buscamos el usuario con cualquier nombre posible
+            usuario_id = row_dict.get('user_id') or row_dict.get('usuario_id') or row_dict.get('user_id') or row_dict.get('usuario') or ''
+            # buscamos email si existe
+            email = usuario_id
+            try:
+                if usuario_id:
+                    c2=con.cursor()
+                    c2.execute("SELECT email FROM usuarios WHERE id=?", (usuario_id,))
+                    u=c2.fetchone()
+                    if u: email=u[0]
+            except:
+                pass
+
             data.append({
-                "id":row[0],
-                "fecha":row[1],
-                "usuario":row[2] or f"ID {row[6]}",
-                "monto":row[3],
-                "yape_plin":row[4],
-                "estado":row[5]
+                "id": row_dict.get('id'),
+                "fecha": row_dict.get('fecha') or row_dict.get('created_at') or '',
+                "usuario": email or f"ID {usuario_id}",
+                "monto": row_dict.get('monto', 0),
+                "yape_plin": row_dict.get('banco_info') or row_dict.get('yape_plin') or row_dict.get('metodo_pago') or row_dict.get('banco') or '',
+                "estado": row_dict.get('estado','pendiente')
             })
         con.close()
         return jsonify(data)
