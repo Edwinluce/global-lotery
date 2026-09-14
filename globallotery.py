@@ -222,25 +222,32 @@ def mis_retiros():
     rows=c.fetchall(); con.close()
     return jsonify([{"monto":r[0],"banco":r[1],"estado":r[2],"fecha":r[3][11:16] if r[3] else ""} for r in rows])
 
-@app.route('/api/retiros')
-def api_listar_retiros():
-    if not session.get('admin'):
-        return jsonify([])
-    con=db(); c=con.cursor()
-    c.execute("SELECT id, monto, banco_info, estado, fecha, user_id FROM retiros ORDER BY id DESC")
-    rows=c.fetchall()
-    con.close()
-    out=[]
-    for r in rows:
-        out.append({
-            "id": r[0],
-            "monto": r[1],
-            "banco_info": r[2],
-            "estado": r[3],
-            "fecha": str(r[4])[:16] if r[4] else "",
-            "usuario": f"ID:{r[5]}"
-        })
-    return jsonify(out)
+@app.route("/api/retiros")
+def api_retiros():
+    if not session.get("is_admin"):
+        return jsonify({"ok": False, "msg": "No eres admin"}), 401
+    try:
+        con=db(); c=con.cursor()
+        c.execute("""
+        SELECT r.id, r.fecha, u.email, r.monto, r.banco_info, r.estado, r.user_id
+        FROM retiros r
+        LEFT JOIN usuarios u ON u.id = r.user_id
+        ORDER BY r.id DESC
+        """)
+        data=[]
+        for row in c.fetchall():
+            data.append({
+                "id":row[0],
+                "fecha":row[1],
+                "usuario":row[2] or f"ID {row[6]}",
+                "monto":row[3],
+                "yape_plin":row[4],
+                "estado":row[5]
+            })
+        con.close()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
         
 @app.route('/api/retiro/<int:rid>/<string:accion>', methods=['POST'])
 def api_accion_retiro(rid,accion):
