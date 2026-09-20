@@ -122,20 +122,40 @@ def login_page(): return render_template('login.html')
 @app.route('/api/register', methods=['POST'])
 def api_register():
     try:
-        d=request.json; email=d['email'].strip().lower(); pw=hash_pass(d['password']); tel=d.get('telefono','')
-        con=db(); c=con.cursor()
+        d=request.json
+        email=d['email'].strip().lower()
+        pw=hash_pass(d['password'])
+        tel=d.get('telefono','')
+
+        con=db()
+        c=con.cursor()
         c.execute(q("SELECT id FROM usuarios WHERE email=?"), (email,))
         existe = c.fetchone()
         if existe:
-            con.close(); session['user']=existe[0]; session['email']=email
+            session['user']=existe[0]
+            session['email']=email
+            con.close()
             return jsonify({"ok":True})
-        c.execute(q("INSERT INTO usuarios (email,password,telefono,saldo,fecha_registro) VALUES (?,?,?,?,?)"), (email,pw,tel,0,datetime.now().isoformat()))
+
+        # ESTO ARREGLA POSTGRES EN RENDER
+        if is_postgres():
+            c.execute(q("INSERT INTO usuarios (email,password,telefono,saldo,fecha_registro) VALUES (?,?,?,?,?) RETURNING id"), (email,pw,tel,0,datetime.now().isoformat()))
+            uid=c.fetchone()[0]
+        else:
+            c.execute(q("INSERT INTO usuarios (email,password,telefono,saldo,fecha_registro) VALUES (?,?,?,?,?)"), (email,pw,tel,0,datetime.now().isoformat()))
+            uid=c.lastrowid
+
         con.commit()
-        c.execute(q("SELECT id FROM usuarios WHERE email=?"),(email,)); uid=c.fetchone()[0]
-        con.close(); session['user']=uid; session['email']=email
+        con.close()
+        session['user']=uid
+        session['email']=email
+        print(f"NUEVO USUARIO: {email}")
         return jsonify({"ok":True})
     except Exception as e:
-        print(e); return jsonify({"ok":False,"msg":"Correo ya registrado"})
+        print(f"ERROR REAL: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok":False,"msg":str(e)})
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
