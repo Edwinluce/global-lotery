@@ -202,22 +202,44 @@ def apostar_multiple():
 
 @app.route('/api/recarga-bcp', methods=['POST'])
 def recarga_bcp():
-    if 'user' not in session: return jsonify({"ok":False})
-    monto=request.form.get('monto') or (request.json.get('monto') if request.is_json else 0)
-    try: monto=int(float(monto))
-    except: monto=0
-    operacion=request.form.get('operacion','') or (request.json.get('operacion','') if request.is_json else '')
-    nombre=request.form.get('nombre','') or (request.json.get('nombre','') if request.is_json else '')
-    file=request.files.get('voucher'); voucher_path=""
-    if file:
-        os.makedirs("static/vouchers", exist_ok=True)
-        fname=secure_filename(f"{session['user']}_{operacion}_{int(datetime.now().timestamp())}.jpg")
-        voucher_path=os.path.join("static/vouchers", fname); file.save(voucher_path)
-    con=db(); c=con.cursor()
-    c.execute(q("INSERT INTO recargas_bcp (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
-    c.execute(q("INSERT INTO recargas (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
-    con.commit(); con.close()
-    return jsonify({"ok":True,"msg":f"Voucher S/{monto} enviado - Esperando aprobación"})
+    try:
+        if 'user' not in session:
+            return jsonify({"ok":False,"msg":"No logueado"})
+
+        monto = request.form.get('monto') or (request.json.get('monto') if request.is_json else 0)
+        try: monto = int(float(monto))
+        except: monto = 0
+
+        operacion = request.form.get('operacion','') or (request.json.get('operacion','') if request.is_json else 'sin-op')
+        nombre = request.form.get('nombre','') or (request.json.get('nombre','') if request.is_json else '')
+
+        # Voucher opcional - no bloqueamos si no hay imagen
+        voucher_path = ""
+        if 'voucher' in request.files:
+            file = request.files['voucher']
+            if file and file.filename!= '':
+                try:
+                    os.makedirs("static/vouchers", exist_ok=True)
+                    fname = secure_filename(f"{session['user']}_{operacion}_{int(datetime.now().timestamp())}.jpg")
+                    voucher_path = os.path.join("static/vouchers", fname)
+                    file.save(voucher_path)
+                except Exception as e:
+                    print(f"Error guardando voucher: {e}")
+                    voucher_path = f"error-{operacion}"
+
+        con=db(); c=con.cursor()
+        # Guardamos en AMBAS tablas para que siempre aparezca
+        c.execute(q("INSERT INTO recargas_bcp (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
+        c.execute(q("INSERT INTO recargas (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
+        con.commit()
+        con.close()
+        print(f"RECARGA GUARDADA: user={session['user']} monto={monto} op={operacion}")
+        return jsonify({"ok":True,"msg":f"Recarga S/{monto} enviada correctamente"})
+    except Exception as e:
+        print(f"ERROR RECARGA_BCP: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok":False,"msg":str(e)})
 @app.route("/api/solicitar-retiro", methods=["POST"])
 def solicitar_retiro():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"}),401
@@ -298,14 +320,14 @@ def admin_panel():
     sid = sorteo_actual[0] if sorteo_actual else 0
     c.execute(q("SELECT COALESCE(SUM(monto),0) FROM apuestas WHERE sorteo_id=?"), (sid,))
     recaudado = int(float(c.fetchone()[0] or 0))
-    c.execute(q("SELECT r.*, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+    c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
     recargas=c.fetchall()
     if len(recargas)==0:
-        c.execute(q("SELECT r.*, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+        c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
         recargas=c.fetchall()
     c.execute(q("SELECT COUNT(*) FROM usuarios")); num_usuarios=c.fetchone()[0] or 0
     con.close()
-    return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, bcp_cuenta=MI_CUENTA_BCP, estado="ABIERTO", tiempo_min=60, recaudado=recaudado, tu_25=int(recaudado*0.25), pagado_75=int(recaudado*0.75), num_usuarios=num_usuarios, recargas_count=len(recargas), pausado=pausado)
+    return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, bcp_cuentas=None, recaudado=recaudado, num_usuarios=num_usuarios, pausado=pausado)
 
 @app.route('/admin/usuarios')
 def admin_usuarios():
