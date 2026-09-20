@@ -72,6 +72,24 @@ body{background:#07120e;color:#fff;padding-bottom:90px}
 <div class="box live"><small>EN VIVO</small><b class="red" id="timer">60:00</b></div>
 <div class="box"><small>JUGANDO</small><b id="jugadores">En sala</b></div>
 </div>
+
+<div style="display:flex;gap:8px;margin:6px;">
+  <button onclick="abrirMisJugadas()" style="flex:1;background:#102a22;border:2px solid #d4a853;padding:12px;border-radius:12px;color:#fff;font-weight:800;cursor:pointer">🎯 Mis Jugadas</button>
+  <button onclick="abrirUltimos()" style="flex:1;background:#102a22;border:2px solid #d4a853;padding:12px;border-radius:12px;color:#fff;font-weight:800">📜 Últimos que Salieron</button>
+</div>
+
+<div id="panelMisJugadas" style="display:none;background:#111;border:1px solid #d4a853;border-radius:12px;padding:12px;margin:6px">
+  <div style="display:flex;justify-content:space-between"><b>🎯 Mis Jugadas de este periodo</b><b onclick="cerrarPanels()" style="cursor:pointer">✖</b></div>
+  <div id="listaMisJugadas" style="margin-top:8px;font-size:12px"></div>
+</div>
+
+<div id="panelUltimos" style="display:none;background:#111;border:1px solid #d4a853;border-radius:12px;padding:12px;margin:6px">
+  <div style="display:flex;justify-content:space-between"><b>📜 Últimos que Salieron</b><b onclick="cerrarPanels()" style="cursor:pointer">✖</b></div>
+  <div id="listaUltimos" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
+</div>
+
+<div class="historial">
+</div>
 <div class="historial">
 <div class="historial-head">
 <b style="font-size:11px;color:#d4a853">📜 ÚLTIMOS QUE SALIERON</b>
