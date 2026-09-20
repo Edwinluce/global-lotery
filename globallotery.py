@@ -307,6 +307,20 @@ def admin_panel():
     con.close()
     return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, bcp_cuenta=MI_CUENTA_BCP, estado="ABIERTO", tiempo_min=60, recaudado=recaudado, tu_25=int(recaudado*0.25), pagado_75=int(recaudado*0.75), num_usuarios=num_usuarios, recargas_count=len(recargas), pausado=pausado)
 
+@app.route('/admin/usuarios')
+def admin_usuarios():
+    if not session.get('admin'):
+        return redirect('/admin/login')
+    con=db(); c=con.cursor()
+    try:
+        c.execute(q("SELECT id, email, telefono, saldo, fecha_registro FROM usuarios ORDER BY id DESC"))
+        usuarios = c.fetchall()
+    except Exception as e:
+        print(f"ERROR USUARIOS: {e}")
+        usuarios = []
+    con.close()
+    return render_template('admin_usuarios.html', usuarios=usuarios)
+
 @app.route('/api/admin/aprobar-recarga', methods=['POST'])
 def aprobar_recarga():
     if not session.get('admin'): return jsonify({"ok":False})
