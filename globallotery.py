@@ -6,7 +6,9 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'global-lottery-2025-peru'
-
+app.secret_key = 'global-lotery-clave-fija-2024-no-cambiar-nunca'
+app.config['SESSION_PERMANENT'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 MI_CUENTA_BCP = "19106864219053"
 MI_CCI_BCP = "00219110686421905358"
 MI_LINK_IZIPAY = "https://izipayya.page.link/TU_LINK_AQUI"
