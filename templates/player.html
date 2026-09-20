@@ -360,6 +360,26 @@ fetch('/api/mis-apuestas-actuales').then(r=>r.json()).then(d=>{
    }
  }
 });
+
+function cerrarPanels(){
+  document.getElementById('panelMisJugadas').style.display='none';
+  document.getElementById('panelUltimos').style.display='none';
+}
+function abrirMisJugadas(){
+  cerrarPanels();
+  document.getElementById('panelMisJugadas').style.display='block';
+  const lista = document.getElementById('listaMisJugadas');
+  if(document.getElementById('historialAnimales')){
+     lista.innerHTML = '<b>Tus apuestas de este periodo:</b><br>' + (localStorage.getItem('mis_apuestas') || 'Aún no has apostado');
+  } else {
+     lista.innerHTML = 'No tienes apuestas aún en este periodo';
+  }
+}
+function abrirUltimos(){
+  cerrarPanels();
+  document.getElementById('panelUltimos').style.display='block';
+  document.getElementById('listaUltimos').innerHTML = document.getElementById('historialAnimales').innerHTML;
+}
 </script>
 <!-- WHATSAPP SOLO SALA -->
 <style>
