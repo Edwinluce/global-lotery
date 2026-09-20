@@ -321,14 +321,18 @@ def admin_panel():
         sid = sorteo_actual[0] if sorteo_actual else 0
         c.execute(q("SELECT COALESCE(SUM(monto),0) FROM apuestas WHERE sorteo_id=?"), (sid,))
         recaudado = int(float(c.fetchone()[0] or 0))
-        c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
-        recargas=c.fetchall()
-        if len(recargas)==0:
-            c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+
+        # SELECT sin r.nombre para que no de error
+        try:
+            c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
             recargas=c.fetchall()
+        except:
+            # Si falla, probamos la otra tabla
+            c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+            recargas=c.fetchall()
+
         c.execute(q("SELECT COUNT(*) FROM usuarios")); num_usuarios=c.fetchone()[0] or 0
         con.close()
-        # Pasamos TODO lo que tu admin.html pueda necesitar para que no de 500
         return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, recargas=recargas, bcp_cuentas=[], recaudado=recaudado, num_usuarios=num_usuarios, pausado=pausado, bcp_cuenta=None)
     except Exception as e:
         import traceback
