@@ -212,6 +212,8 @@ document.getElementById('btn-limpiar').onclick=()=>{ apuestas={}; document.query
 document.getElementById('btn-confirmar').onclick=()=>{
  let total=calc(); if(total==0) return alert('Elige animal'); if(saldoActual<total){ alert('Saldo insuficiente'); abrirRecarga(); return; }
  misApuestasGuardadas={...apuestas};
+localStorage.setItem('mis_jugadas_' + partidaActual, JSON.stringify(apuestas));
+localStorage.setItem('mis_apuestas_texto', Object.keys(apuestas).map(k=>`• ${k} - S/ ${apuestas[k]}`).join('<br>'));
  fetch('/api/apostar-multiple',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apuestas})}).then(r=>r.json()).then(d=>{
   if(d.ok){ saldoActual-=total; document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2); mostrarSalaConteo(); }
   else alert(d.msg);
@@ -369,10 +371,11 @@ function abrirMisJugadas(){
   cerrarPanels();
   document.getElementById('panelMisJugadas').style.display='block';
   const lista = document.getElementById('listaMisJugadas');
-  if(document.getElementById('historialAnimales')){
-     lista.innerHTML = '<b>Tus apuestas de este periodo:</b><br>' + (localStorage.getItem('mis_apuestas') || 'Aún no has apostado');
+  let txt = localStorage.getItem('mis_apuestas_texto');
+  if(txt){
+    lista.innerHTML = txt;
   } else {
-     lista.innerHTML = 'No tienes apuestas aún en este periodo';
+    lista.innerHTML = 'No tienes apuestas en este periodo aún';
   }
 }
 function abrirUltimos(){
