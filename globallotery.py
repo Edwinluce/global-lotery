@@ -313,22 +313,28 @@ def admin_logout(): session.pop('admin',None); return redirect('/admin/login')
 
 @app.route('/admin')
 def admin_panel():
-    if not session.get('admin'): return redirect('/admin/login')
-    pausado, _ = get_config()
-    con=db(); c=con.cursor()
-    c.execute(q("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")); sorteo_actual=c.fetchone()
-    sid = sorteo_actual[0] if sorteo_actual else 0
-    c.execute(q("SELECT COALESCE(SUM(monto),0) FROM apuestas WHERE sorteo_id=?"), (sid,))
-    recaudado = int(float(c.fetchone()[0] or 0))
-    c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
-    recargas=c.fetchall()
-    if len(recargas)==0:
-        c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+    try:
+        if not session.get('admin'): return redirect('/admin/login')
+        pausado, _ = get_config()
+        con=db(); c=con.cursor()
+        c.execute(q("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")); sorteo_actual=c.fetchone()
+        sid = sorteo_actual[0] if sorteo_actual else 0
+        c.execute(q("SELECT COALESCE(SUM(monto),0) FROM apuestas WHERE sorteo_id=?"), (sid,))
+        recaudado = int(float(c.fetchone()[0] or 0))
+        c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
         recargas=c.fetchall()
-    c.execute(q("SELECT COUNT(*) FROM usuarios")); num_usuarios=c.fetchone()[0] or 0
-    con.close()
-    return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, bcp_cuentas=None, recaudado=recaudado, num_usuarios=num_usuarios, pausado=pausado)
-
+        if len(recargas)==0:
+            c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, r.nombre, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
+            recargas=c.fetchall()
+        c.execute(q("SELECT COUNT(*) FROM usuarios")); num_usuarios=c.fetchone()[0] or 0
+        con.close()
+        # Pasamos TODO lo que tu admin.html pueda necesitar para que no de 500
+        return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, recargas=recargas, bcp_cuentas=[], recaudado=recaudado, num_usuarios=num_usuarios, pausado=pausado, bcp_cuenta=None)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"<h1>Error en admin: {e}</h1><pre>{traceback.format_exc()}</pre>"
+    
 @app.route('/admin/usuarios')
 def admin_usuarios():
     if not session.get('admin'):
