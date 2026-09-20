@@ -299,5 +299,42 @@ def api_admin_control():
     if accion=='activar': set_config('pausado','0')
     return jsonify({"ok":True})
 
+@app.route('/admin/usuarios')
+def admin_usuarios_page():
+    if not session.get('admin'): return redirect('/admin/login')
+    con=db(); c=con.cursor()
+    c.execute(q("SELECT id,email,telefono,saldo,fecha_registro FROM usuarios ORDER BY id DESC"))
+    usuarios=c.fetchall(); con.close()
+    return render_template('admin_usuarios.html', usuarios=usuarios)
+
+@app.route('/api/admin/ganancias')
+def api_admin_ganancias():
+    if not session.get('admin'): return jsonify([])
+    con=db(); c=con.cursor()
+    c.execute(q("SELECT id, fecha_hora_cierre, recaudacion, margen_plataforma, fondo_premios, estado FROM sorteos WHERE recaudacion IS NOT NULL AND recaudacion>0 ORDER BY id DESC LIMIT 20"))
+    rows=c.fetchall(); con.close()
+    data=[{"id":r[0],"fecha":r[1][:16] if r[1] else "","recaudado":int(float(r[2] or 0)),"tu25":int(float(r[3] or 0)),"pago75":int(float(r[4] or 0)),"estado":r[5]} for r in rows]
+    return jsonify(data)
+
+@app.route('/api/admin/apuestas-actual')
+def api_admin_apuestas_actual():
+    if not session.get('admin'): return jsonify({"lista":[],"por_animal":[],"total":0,"sorteo_id":0})
+    con=db(); c=con.cursor()
+    c.execute(q("SELECT id FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1"))
+    s=c.fetchone()
+    if not s:
+        con.close()
+        return jsonify({"lista":[],"por_animal":[],"total":0,"sorteo_id":0})
+    sid=s[0]
+    c.execute(q("SELECT a.fecha, u.email, an.nombre, a.monto FROM apuestas a LEFT JOIN usuarios u ON u.id=a.usuario_id LEFT JOIN animales an ON an.id=a.animal_id WHERE a.sorteo_id=? ORDER BY a.monto DESC LIMIT 100"), (sid,))
+    rows=c.fetchall()
+    c.execute(q("SELECT an.nombre, COUNT(a.id), COALESCE(SUM(a.monto),0) FROM apuestas a JOIN animales an ON an.id=a.animal_id WHERE a.sorteo_id=? GROUP BY an.nombre ORDER BY SUM(a.monto) DESC"), (sid,))
+    por_animal=c.fetchall()
+    con.close()
+    lista=[{"fecha":r[0][11:19] if r[0] and len(r[0])>10 else (r[0] or ""),"email":r[1] or "anon","animal":r[2] or "??","monto":int(float(r[3] or 0))} for r in rows]
+    por_json=[{"animal":r[0],"cantidad":r[1],"total":int(float(r[2]))} for r in por_animal]
+    total=sum([x["monto"] for x in lista])
+    return jsonify({"lista":lista,"por_animal":por_json,"total":total,"sorteo_id":sid})
+
 if __name__=='__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))
