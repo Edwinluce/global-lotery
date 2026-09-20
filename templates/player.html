@@ -207,17 +207,44 @@ animales.forEach(a=>{
  grid.appendChild(d);
 });
 function calc(){ let t=Object.values(apuestas).reduce((a,b)=>a+b,0); document.getElementById('total').innerText='S/ '+t.toFixed(2); return t; }
-document.querySelectorAll('#montoPorApuesta button').forEach(b=>{ b.onclick=()=>{ document.querySelectorAll('#montoPorApuesta button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); monto=parseInt(b.dataset.v); for(let k in apuestas) apuestas[k]=monto; calc(); }; });
-document.getElementById('btn-limpiar').onclick=()=>{ apuestas={}; document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected')); calc(); };
-document.getElementById('btn-confirmar').onclick=()=>{
- let total=calc(); if(total==0) return alert('Elige animal'); if(saldoActual<total){ alert('Saldo insuficiente'); abrirRecarga(); return; }
- misApuestasGuardadas={...apuestas};
-localStorage.setItem('mis_jugadas_' + partidaActual, JSON.stringify(apuestas));
-localStorage.setItem('mis_apuestas_texto', Object.keys(apuestas).map(k=>`• ${k} - S/ ${apuestas[k]}`).join('<br>'));
- fetch('/api/apostar-multiple',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apuestas})}).then(r=>r.json()).then(d=>{
-  if(d.ok){ saldoActual-=total; document.getElementById('saldo').innerText='S/ '+saldoActual.toFixed(2); mostrarSalaConteo(); }
-  else alert(d.msg);
- });
+document.getElementById('btn-confirmar').onclick=async()=>{
+  let total=calc();
+  if(total==0){ alert('Selecciona al menos un animal'); return; }
+  if(total>saldoActual){ alert('Saldo insuficiente. Tu saldo: S/ '+saldoActual); return; }
+  
+  let btn = document.getElementById('btn-confirmar');
+  btn.innerText = 'Procesando...';
+  btn.disabled = true;
+
+  try{
+    misApuestasGuardadas={...apuestas};
+    let res = await fetch('/api/apostar-multiple',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apuestas:apuestas})
+    });
+    let d = await res.json();
+    console.log('Respuesta servidor:', d);
+
+    if(d.ok){
+      saldoActual-=total;
+      document.getElementById('saldo').innerText = 'S/ '+saldoActual;
+      localStorage.setItem('mis_jugadas_' + partidaActual, JSON.stringify(apuestas));
+      localStorage.setItem('mis_apuestas_texto', Object.keys(apuestas).map(k=>`• Animal ${k} - S/ ${apuestas[k]}`).join('<br>'));
+      alert('¡Apuesta confirmada! S/ '+total);
+      apuestas={};
+      actualizarUI();
+      cerrarPanels();
+    } else {
+      alert('Error del servidor: '+(d.msg||'No se pudo apostar'));
+    }
+  }catch(e){
+    console.error(e);
+    alert('Error de conexión: '+e.message);
+  } finally {
+    btn.innerText = 'Confirmar Apuesta';
+    btn.disabled = false;
+  }
 };
 function mostrarSalaConteo(){
  let html=''; let total=0;
