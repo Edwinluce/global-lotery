@@ -61,12 +61,18 @@ body{background:#0a0a0a;color:#fff;padding:12px}
 <div class="tab" onclick="showTab('historial',event)">📜 Ganancias 75%</div>
 <div class="tab" onclick="showTab('apuestas',event)">🎯 Apuestas Actual</div>
 <div class="tab retiro-tab" onclick="showTab('retiros',event)" id="tabBtnRetiros">💸 Retiros</div>
-</div><div id="tab-recargas">
-{% for r in recargas_pendientes %}
-<div class="card" style="border-left:4px solid #f59e0b">
-<b>{{r[7]}}</b> S/ {{r[2]}} Op {{r[3]}} <button class="btn btn-green" onclick="fetch('/api/admin/aprobar-recarga/{{r[0]}}',{method:'POST'}).then(()=>location.reload())">✅</button> <button class="btn btn-red" onclick="fetch('/api/admin/rechazar-recarga/{{r[0]}}',{method:'POST'}).then(()=>location.reload())">❌</button>
-{% if r[6] %}<br><a href="/{{r[6]}}" target="_blank"><img src="/{{r[6]}}" style="max-width:200px;border-radius:8px;margin-top:6px"></a>{% endif %}
 </div>
+
+<div id="tab-recargas">
+{% for r in recargas_pendientes %}
+<div class="card" style="border-left:4px solid #f59e0b; padding:10px; margin:8px 0;">
+  <b>{{r[7] or 'Usuario'}}</b> - S/ {{r[2]}} - Op: {{r[3]}}
+  <button class="btn btn-green" onclick="aprobarRecarga({{r[0]}})" style="margin-left:10px;">Aprobar</button>
+  <button class="btn btn-red" onclick="rechazarRecarga({{r[0]}})" style="margin-left:5px;">X</button>
+  {% if r[6] %}<br><a href="/{{r[6]}}" target="_blank"><img src="/{{r[6]}}" style="max-width:200px; margin-top:5px; border-radius:5px;"></a>{% endif %}
+</div>
+{% else %}
+<p style="color:#888;padding:10px;">No hay recargas pendientes</p>
 {% endfor %}
 </div>
 
@@ -131,6 +137,24 @@ function showTab(t,e){
  if(t=='retiros') cargarRetiros();
 }
 function cambiarTiempo(m){ fetch('/api/admin/set-tiempo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutos:m})}).then(()=>location.reload()) }
+
+function aprobarRecarga(id){
+  if(!confirm('¿Aprobar recarga ID '+id+' y acreditar saldo?')) return;
+  fetch('/api/admin/aprobar-recarga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+ .then(r=>r.json()).then(d=>{
+    if(d.ok){ alert('¡Acreditado!'); location.reload(); }
+    else alert('Error: '+(d.msg||'fallo'));
+  }).catch(e=>alert('Error: '+e));
+}
+function rechazarRecarga(id){
+  if(!confirm('¿Rechazar recarga ID '+id+'?')) return;
+  fetch('/api/admin/rechazar-recarga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+ .then(r=>r.json()).then(d=>{
+    if(d.ok){ alert('Rechazada'); location.reload(); }
+    else alert('Error: '+(d.msg||'fallo'));
+  });
+}
+
 function verDetalle(sid){
   let div=document.getElementById('detalle-'+sid);
   if(div.style.display=='block'){div.style.display='none';return;}
@@ -144,12 +168,15 @@ function verDetalle(sid){
 }
 function pintarAnimales(){
   document.querySelectorAll('.animal-chip').forEach(chip=>{
-    let numTxt=chip.querySelector('[class^="name-"]').innerText.replace('N°','').trim();
+    let el = chip.querySelector('[class^="name-"]');
+    if(!el) return;
+    let numTxt=el.innerText.replace('N°','').trim();
     let num=parseInt(numTxt); if(isNaN(num)) return;
     let idx=num-1; if(idx<0||idx>=25) return;
     let a=animales[idx];
-    chip.querySelector('[class^="emoji-"]').innerText=a[1];
-    chip.querySelector('[class^="name-"]').innerText=a[0]+' #'+num;
+    let emojiEl = chip.querySelector('[class^="emoji-"]');
+    if(emojiEl) emojiEl.innerText=a[1];
+    el.innerText=a[0]+' #'+num;
   });
 }
 async function cargarRetiros(){
