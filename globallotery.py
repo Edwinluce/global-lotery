@@ -66,6 +66,17 @@ def init_db():
         proximo = get_proximo_cierre_global()
         c.execute(q("INSERT INTO sorteos (fecha_hora_cierre, estado, tiempo_min) VALUES (?, 'ABIERTO', 60)"),(proximo.isoformat(),))
     c.execute(q("INSERT INTO config (k,v) VALUES ('pausado','0') ON CONFLICT (k) DO NOTHING") if is_postgres() else "INSERT OR IGNORE INTO config (k,v) VALUES ('pausado','0')")
+    # --- FIX para recargas_bcp sin columna nombre ---
+        try:
+            if is_postgres():
+                c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS nombre TEXT")
+                c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS voucher TEXT")
+                c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS fecha TEXT")
+                c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pendiente'")
+            else:
+                c.execute("ALTER TABLE recargas_bcp ADD COLUMN nombre TEXT")
+        except:
+            pass
     con.commit(); con.close()
 
 init_db()
