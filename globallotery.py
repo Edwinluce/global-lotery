@@ -174,8 +174,7 @@ def player():
     c.execute(q("SELECT saldo,email FROM usuarios WHERE id=?"), (session['user'],)); u=c.fetchone()
     c.execute(q("SELECT * FROM animales")); anims=c.fetchall()
     con.close()
-    return render_template('player.html', sorteo=s, animales=anims, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP)
-    @app.route('/api/apostar-multiple', methods=['POST'])
+    return render_template('player.html', sorteo=s, animales=anims, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP)@app.route('/api/apostar-multiple', methods=['POST'])
 def apostar_multiple():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"})
     data=request.json['apuestas']; uid=session['user']
