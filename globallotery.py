@@ -202,13 +202,22 @@ def recarga_bcp():
 
 @app.route("/api/solicitar-retiro", methods=["POST"])
 def solicitar_retiro():
-    if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"}),401
-    data=request.get_json(); monto=int(float(data.get("monto",0))); yape=data.get("yape","")
-    con=db(); c=con.cursor(); c.execute(q("SELECT saldo FROM usuarios WHERE id=?"), (session['user'],)); u=c.fetchone()
-    if not u or u[0] < monto: con.close(); return jsonify({"ok":False,"msg":f"Saldo insuficiente S/{u[0] if u else 0}"})
+    if 'user' not in session:
+        return jsonify({"ok":False,"msg":"No logueado"}),401
+    data=request.get_json()
+    monto=int(float(data.get("monto",0)))
+    yape=data.get("yape","")
+    con=db()
+    c=con.cursor()
+    c.execute(q("SELECT saldo FROM usuarios WHERE id=?"), (session['user'],))
+    u=c.fetchone()
+    if not u or u[0] < monto:
+        con.close()
+        return jsonify({"ok":False,"msg":f"Saldo insuficiente S/{u[0] if u else 0}"})
     c.execute(q("UPDATE usuarios SET saldo=saldo-? WHERE id=?"), (monto, session['user']))
     c.execute(q("INSERT INTO retiros (user_id, monto, banco_info, estado, fecha) VALUES (?,?,?,?,?)"), (session['user'], monto, yape, "pendiente", datetime.now().isoformat()))
-    con.commit(); con.close()
+    con.commit()
+    con.close()
     return jsonify({"ok":True})
 
 @app.route('/api/saldo')
