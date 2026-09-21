@@ -164,17 +164,23 @@ def logout(): session.clear(); return redirect('/login')
 
 @app.route('/')
 def player():
-    if 'user' not in session: return redirect('/login')
-    con=db(); c=con.cursor()
-    c.execute(q("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")); s=c.fetchone()
-    if not s:
-        proximo = get_proximo_cierre_global()
-        c.execute(q("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')"),(proximo.isoformat(),)); con.commit()
+    try:
+        if 'user' not in session: return redirect('/login')
+        con=db(); c=con.cursor()
         c.execute(q("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")); s=c.fetchone()
-    c.execute(q("SELECT saldo,email FROM usuarios WHERE id=?"), (session['user'],)); u=c.fetchone()
-    c.execute(q("SELECT * FROM animales")); anims=c.fetchall()
-    con.close()
-    return render_template('player.html', sorteo=s, animales=anims, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP)@app.route('/api/apostar-multiple', methods=['POST'])
+        if not s:
+            proximo = get_proximo_cierre_global()
+            c.execute(q("INSERT INTO sorteos (fecha_hora_cierre, estado) VALUES (?, 'ABIERTO')"),(proximo.isoformat(),)); con.commit()
+            c.execute(q("SELECT * FROM sorteos WHERE estado='ABIERTO' ORDER BY id DESC LIMIT 1")); s=c.fetchone()
+        c.execute(q("SELECT saldo,email FROM usuarios WHERE id=?"), (session['user'],)); u=c.fetchone()
+        c.execute(q("SELECT * FROM animales")); anims=c.fetchall()
+        con.close()
+        return render_template('player.html', sorteo=s, animales=anims, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return f"<h1>FALLO EN: {e}</h1><pre>{traceback.format_exc()}</pre><hr><h3>sorteo={s if 's' in locals() else 'no cargó'}</h3>"
+
 def apostar_multiple():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"})
     data=request.json['apuestas']; uid=session['user']
