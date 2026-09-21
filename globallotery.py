@@ -167,8 +167,9 @@ def player():
     c.execute(q("SELECT fecha_hora_cierre, animal_ganador FROM sorteos WHERE estado IN ('PAGADO','FINALIZADO') ORDER BY id DESC LIMIT 24")); historial=c.fetchall()
     con.close()
     return render_template('player.html', sorteo=s, animales=anims, historial=historial, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP, bcp_cci=MI_CCI_BCP, bcp_link=MI_LINK_IZIPAY, bcp_nombre=MI_NOMBRE_BCP)
+    
     @app.route('/api/apostar-multiple', methods=['POST'])
-def apostar_multiple():
+    def apostar_multiple():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"})
     pausado,_ = get_config()
     if pausado: return jsonify({"ok":False,"msg":"Sala pausada por admin"})
