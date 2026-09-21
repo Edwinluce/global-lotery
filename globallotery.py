@@ -373,6 +373,20 @@ def api_admin_control():
     if accion=='pausar': set_config('pausado','1')
     if accion=='activar': set_config('pausado','0')
     return jsonify({"ok":True})
+@app.route('/arreglar_bd_secreto_123')
+def arreglar():
+    con=db(); c=con.cursor()
+    try:
+        c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS nombre TEXT")
+        c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS voucher TEXT")
+        c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS fecha TEXT")
+        c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pendiente'")
+        con.commit()
+        return "BD ARREGLADA - ya puedes recargar"
+    except Exception as e:
+        return f"Error: {e}"
+    finally:
+        con.close()
 
 if __name__=='__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))
