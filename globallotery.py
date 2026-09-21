@@ -202,18 +202,17 @@ def apostar_multiple():
 
 # === RECARGAS BCP - GUARDAR ===
 @app.route('/api/recarga-bcp', methods=['POST'])
+@app.route('/api/recarga-bcp', methods=['POST'])
 def recarga_bcp():
     if 'uid' not in session:
         return jsonify({"ok":False, "msg":"No logueado"})
     try:
         user_id = session['uid']
-        monto = request.form.get('monto') or request.form.get('montoCustom') or '0'
+        monto = request.form.get('monto') or '0'
         operacion = request.form.get('operacion','').strip()
         nombre = request.form.get('nombre','').strip() or request.form.get('cardNombre','').strip()
-
         if not operacion:
             return jsonify({"ok":False, "msg":"Falta N° Operación"})
-
         voucher_path = ""
         if 'voucher' in request.files:
             f = request.files['voucher']
@@ -222,22 +221,18 @@ def recarga_bcp():
                 fname = f"{int(time.time())}_{user_id}_{f.filename}"
                 f.save(os.path.join('static/vouchers', fname))
                 voucher_path = f"static/vouchers/{fname}"
-
         con=db(); c=con.cursor()
-        # Intentar guardar en recargas_bcp primero
         try:
             c.execute(q("INSERT INTO recargas_bcp (user_id, monto, operacion, estado, fecha, voucher, nombre) VALUES (?,?,?,?,?,?,?)"),
                       (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path, nombre))
         except:
-            # Si no existe esa tabla/columnas, usa recargas simple
             c.execute(q("INSERT INTO recargas (user_id, monto, operacion, estado, fecha, voucher) VALUES (?,?,?,?,?,?)"),
                       (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path))
         con.commit(); con.close()
-        return jsonify({"ok":True, "msg":"Recarga enviada, espera aprobación"})
+        return jsonify({"ok":True})
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"ok":False, "msg":str(e)})
-
 @app.route('/api/admin/aprobar-recarga', methods=['POST'])
 def aprobar_recarga():
     if not session.get('admin'): return jsonify({"ok":False})
