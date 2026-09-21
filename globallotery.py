@@ -1,13 +1,8 @@
 from flask import Flask, render_template, request, jsonify, session, redirect
 import sqlite3, hashlib, random, secrets, uuid, os, time
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
-try:
-    import psycopg2
-except:
-    psycopg2 = None
 
 app = Flask(__name__)
 app.secret_key = 'global-lotery-clave-fija-2024-no-cambiar-nunca'
@@ -15,41 +10,54 @@ app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 MI_CUENTA_BCP = "19106864219053"
-TZ = ZoneInfo("America/Lima")
-DATABASE_URL = os.environ.get('DATABASE_URL')
+MI_CCI_BCP = "00219110686421905358"
+MI_LINK_IZIPAY = "https://izipayya.page.link/TU_LINK_AQUI"
+MI_NOMBRE_BCP = "Globallotery"
 
+DATABASE_URL = os.environ.get('DATABASE_URL')
 def is_postgres():
-    return DATABASE_URL is not None and psycopg2 is not None
+    return DATABASE_URL is not None and DATABASE_URL!= ""
+
+def db():
+    if is_postgres():
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect('animalitos_peru.db', check_same_thread=False)
 
 def q(query):
     return query.replace('?', '%s') if is_postgres() else query
 
-def db():
-    if is_postgres():
-        return psycopg2.connect(DATABASE_URL)
-    else:
-        return sqlite3.connect('animalitos.db')
+def hash_pass(p):
+    return hashlib.sha256(p.encode()).hexdigest()
 
 def get_proximo_cierre_global():
-    ahora = datetime.now(TZ)
-    for h in [10,12,14,16,18,20]:
-        c = ahora.replace(hour=h, minute=0, second=0, microsecond=0)
-        if c > ahora:
-            return c
-    man = ahora + timedelta(days=1)
-    return man.replace(hour=10, minute=0, second=0, microsecond=0)
+    ahora = datetime.now()
+    return ahora.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
 def init_db():
-    con=db(); c=con.cursor()
-    c.execute(q("CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, email TEXT, password TEXT, saldo FLOAT DEFAULT 0)" if is_postgres() else "CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, password TEXT, saldo FLOAT DEFAULT 0)"))
-    c.execute(q("CREATE TABLE IF NOT EXISTS animales (id SERIAL PRIMARY KEY, numero INTEGER, nombre TEXT)" if is_postgres() else "CREATE TABLE IF NOT EXISTS animales (id INTEGER PRIMARY KEY AUTOINCREMENT, numero INTEGER, nombre TEXT)"))
-    c.execute(q("CREATE TABLE IF NOT EXISTS sorteos (id SERIAL PRIMARY KEY, fecha_hora_cierre TEXT, estado TEXT, tiempo_min INTEGER)" if is_postgres() else "CREATE TABLE IF NOT EXISTS sorteos (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora_cierre TEXT, estado TEXT, tiempo_min INTEGER)"))
-    c.execute(q("CREATE TABLE IF NOT EXISTS apuestas (id SERIAL PRIMARY KEY, user_id INTEGER, sorteo_id INTEGER, animal_id INTEGER, monto FLOAT, fecha TEXT)" if is_postgres() else "CREATE TABLE IF NOT EXISTS apuestas (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, sorteo_id INTEGER, animal_id INTEGER, monto FLOAT, fecha TEXT)"))
-    c.execute(q("CREATE TABLE IF NOT EXISTS recargas_bcp (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT DEFAULT 'pendiente', fecha TEXT, voucher TEXT, nombre TEXT)" if is_postgres() else "CREATE TABLE IF NOT EXISTS recargas_bcp (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT DEFAULT 'pendiente', fecha TEXT, voucher TEXT, nombre TEXT)"))
-    c.execute(q("CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)" if is_postgres() else "CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)"))
+    con = db(); c = con.cursor()
+    if is_postgres():
+        c.execute("CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, email TEXT UNIQUE, password TEXT, telefono TEXT, saldo FLOAT DEFAULT 0, fecha_registro TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS animales (id INTEGER PRIMARY KEY, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS sorteos (id SERIAL PRIMARY KEY, fecha_hora_cierre TEXT, animal_ganador INTEGER, estado TEXT, seed TEXT, hash_verificacion TEXT, recaudacion FLOAT, fondo_premios FLOAT, margen_plataforma FLOAT, jackpot FLOAT, tiempo_min INTEGER DEFAULT 60)")
+        c.execute("CREATE TABLE IF NOT EXISTS apuestas (id TEXT PRIMARY KEY, sorteo_id INTEGER, usuario_id INTEGER, animal_id INTEGER, monto FLOAT, fecha TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS retiros (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, banco_info TEXT, estado TEXT, fecha TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+    else:
+        c.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT, telefono TEXT, saldo REAL DEFAULT 0, fecha_registro TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS animales (id INTEGER PRIMARY KEY, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS sorteos (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_hora_cierre TEXT, animal_ganador INTEGER, estado TEXT, seed TEXT, hash_verificacion TEXT, recaudacion REAL, fondo_premios REAL, margen_plataforma REAL, jackpot REAL, tiempo_min INTEGER DEFAULT 60)")
+        c.execute("CREATE TABLE IF NOT EXISTS apuestas (id TEXT PRIMARY KEY, sorteo_id INTEGER, usuario_id INTEGER, animal_id INTEGER, monto REAL, fecha TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS retiros (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, banco_info TEXT, estado TEXT, fecha TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
     c.execute("SELECT COUNT(*) FROM animales")
     if c.fetchone()[0]==0:
-        noms=["Perro","Gato","Ratón","Conejo","Zorro","Tigre","León","Elefante","Mono","Gallina","Gallo","Cerdo","Vaca","Caballo","Alpaca"]
+        noms=["Perro","Gato","Ratón","Conejo","Zorro","Tigre","León","Elefante","Mono","Gallina","Gallo","Cerdo","Vaca","Caballo","Alpaca","Vicuña","Cóndor","Oso","Puma","Gallito","Caimán","Serpiente","Rana","Delfin","Guacamayo"]
         for i,n in enumerate(noms):
             try: c.execute(q("INSERT INTO animales VALUES (?,?)"),(i+1,n))
             except: pass
@@ -58,20 +66,10 @@ def init_db():
         proximo = get_proximo_cierre_global()
         c.execute(q("INSERT INTO sorteos (fecha_hora_cierre, estado, tiempo_min) VALUES (?, 'ABIERTO', 60)"),(proximo.isoformat(),))
     c.execute(q("INSERT INTO config (k,v) VALUES ('pausado','0') ON CONFLICT (k) DO NOTHING") if is_postgres() else "INSERT OR IGNORE INTO config (k,v) VALUES ('pausado','0')")
-    # --- FIX para recargas_bcp sin columna nombre ---
-    try:
-        if is_postgres():
-            c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS nombre TEXT")
-            c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS voucher TEXT")
-            c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS fecha TEXT")
-            c.execute("ALTER TABLE recargas_bcp ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pendiente'")
-        else:
-            c.execute("ALTER TABLE recargas_bcp ADD COLUMN nombre TEXT")
-    except:
-        pass
     con.commit(); con.close()
 
 init_db()
+
 def get_config():
     try:
         con=db(); c=con.cursor()
