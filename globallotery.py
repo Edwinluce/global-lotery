@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, session, redirect
-import sqlite3, hashlib, random, secrets, uuid, os
+import sqlite3, hashlib, random, secrets, uuid, os, time
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
@@ -44,8 +44,8 @@ def init_db():
         c.execute("CREATE TABLE IF NOT EXISTS apuestas (id TEXT PRIMARY KEY, sorteo_id INTEGER, usuario_id INTEGER, animal_id INTEGER, monto FLOAT, fecha TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS retiros (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, banco_info TEXT, estado TEXT, fecha TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id SERIAL PRIMARY KEY, user_id INTEGER, monto INTEGER, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS recargas (id SERIAL PRIMARY KEY, user_id INTEGER, monto INTEGER, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas (id SERIAL PRIMARY KEY, user_id INTEGER, monto FLOAT, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
     else:
         c.execute("CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, password TEXT, telefono TEXT, saldo REAL DEFAULT 0, fecha_registro TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS animales (id INTEGER PRIMARY KEY, nombre TEXT)")
@@ -53,8 +53,8 @@ def init_db():
         c.execute("CREATE TABLE IF NOT EXISTS apuestas (id TEXT PRIMARY KEY, sorteo_id INTEGER, usuario_id INTEGER, animal_id INTEGER, monto REAL, fecha TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS config (k TEXT PRIMARY KEY, v TEXT)")
         c.execute("CREATE TABLE IF NOT EXISTS retiros (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, banco_info TEXT, estado TEXT, fecha TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto INTEGER, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
-        c.execute("CREATE TABLE IF NOT EXISTS recargas (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto INTEGER, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas_bcp (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS recargas (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, monto REAL, operacion TEXT, estado TEXT, fecha TEXT, voucher TEXT, nombre TEXT)")
     c.execute("SELECT COUNT(*) FROM animales")
     if c.fetchone()[0]==0:
         noms=["Perro","Gato","Ratón","Conejo","Zorro","Tigre","León","Elefante","Mono","Gallina","Gallo","Cerdo","Vaca","Caballo","Alpaca","Vicuña","Cóndor","Oso","Puma","Gallito","Caimán","Serpiente","Rana","Delfin","Guacamayo"]
@@ -126,9 +126,7 @@ def api_register():
         email=d['email'].strip().lower()
         pw=hash_pass(d['password'])
         tel=d.get('telefono','')
-
-        con=db()
-        c=con.cursor()
+        con=db(); c=con.cursor()
         c.execute(q("SELECT id FROM usuarios WHERE email=?"), (email,))
         existe = c.fetchone()
         if existe:
@@ -136,25 +134,18 @@ def api_register():
             session['email']=email
             con.close()
             return jsonify({"ok":True})
-
-        # ESTO ARREGLA POSTGRES EN RENDER
         if is_postgres():
             c.execute(q("INSERT INTO usuarios (email,password,telefono,saldo,fecha_registro) VALUES (?,?,?,?,?) RETURNING id"), (email,pw,tel,0,datetime.now().isoformat()))
             uid=c.fetchone()[0]
         else:
             c.execute(q("INSERT INTO usuarios (email,password,telefono,saldo,fecha_registro) VALUES (?,?,?,?,?)"), (email,pw,tel,0,datetime.now().isoformat()))
             uid=c.lastrowid
-
-        con.commit()
-        con.close()
+        con.commit(); con.close()
         session['user']=uid
         session['email']=email
-        print(f"NUEVO USUARIO: {email}")
         return jsonify({"ok":True})
     except Exception as e:
-        print(f"ERROR REAL: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return jsonify({"ok":False,"msg":str(e)})
 
 @app.route('/api/login', methods=['POST'])
@@ -184,8 +175,7 @@ def player():
     c.execute(q("SELECT * FROM animales")); anims=c.fetchall()
     con.close()
     return render_template('player.html', sorteo=s, animales=anims, saldo=u[0] if u else 0, email=u[1] if u else '', bcp_cuenta=MI_CUENTA_BCP)
-
-@app.route('/api/apostar-multiple', methods=['POST'])
+    @app.route('/api/apostar-multiple', methods=['POST'])
 def apostar_multiple():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"})
     data=request.json['apuestas']; uid=session['user']
@@ -200,13 +190,12 @@ def apostar_multiple():
     con.commit(); con.close()
     return jsonify({"ok":True})
 
-# === RECARGAS BCP - GUARDAR ===
 @app.route('/api/recarga-bcp', methods=['POST'])
 def recarga_bcp():
-    if 'uid' not in session:
+    if 'user' not in session and 'uid' not in session:
         return jsonify({"ok":False, "msg":"No logueado"})
     try:
-        user_id = session['uid']
+        user_id = session.get('user') or session.get('uid')
         monto = request.form.get('monto') or '0'
         operacion = request.form.get('operacion','').strip()
         nombre = request.form.get('nombre','').strip() or request.form.get('cardNombre','').strip()
@@ -217,41 +206,41 @@ def recarga_bcp():
             f = request.files['voucher']
             if f and f.filename:
                 os.makedirs('static/vouchers', exist_ok=True)
-                fname = f"{int(time.time())}_{user_id}_{f.filename}"
+                fname = f"{int(time.time())}_{user_id}_{secure_filename(f.filename)}"
                 f.save(os.path.join('static/vouchers', fname))
                 voucher_path = f"static/vouchers/{fname}"
         con=db(); c=con.cursor()
-        try:
-            c.execute(q("INSERT INTO recargas_bcp (user_id, monto, operacion, estado, fecha, voucher, nombre) VALUES (?,?,?,?,?,?,?)"),
-                      (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path, nombre))
-        except:
-            c.execute(q("INSERT INTO recargas (user_id, monto, operacion, estado, fecha, voucher) VALUES (?,?,?,?,?,?)"),
-                      (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path))
+        c.execute(q("INSERT INTO recargas_bcp (user_id, monto, operacion, estado, fecha, voucher, nombre) VALUES (?,?,?,?,?,?,?)"),
+                  (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path, nombre))
         con.commit(); con.close()
         return jsonify({"ok":True})
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"ok":False, "msg":str(e)})
+
 @app.route('/api/admin/aprobar-recarga', methods=['POST'])
 def aprobar_recarga():
     if not session.get('admin'): return jsonify({"ok":False})
     d=request.json; rid=d['id']
     con=db(); c=con.cursor()
-    c.execute(q("SELECT user_id, monto FROM recargas_bcp WHERE id=?"), (rid,))
-    row=c.fetchone()
-    tabla = 'recargas_bcp'
-    if not row:
-        c.execute(q("SELECT user_id, monto FROM recargas WHERE id=?"), (rid,))
+    try:
+        c.execute(q("SELECT user_id, monto FROM recargas_bcp WHERE id=?"), (rid,))
         row=c.fetchone()
-        tabla = 'recargas'
-    if row:
-        c.execute(q("UPDATE usuarios SET saldo=saldo+? WHERE id=?"), (row[1], row[0]))
-        # actualiza las dos tablas por si acaso
-        try: c.execute(q("UPDATE recargas_bcp SET estado='aprobado' WHERE id=?"), (rid,))
-        except: pass
-        try: c.execute(q("UPDATE recargas SET estado='aprobado' WHERE id=?"), (rid,))
-        except: pass
-        con.commit()
+        tabla = 'recargas_bcp'
+        if not row:
+            c.execute(q("SELECT user_id, monto FROM recargas WHERE id=?"), (rid,))
+            row=c.fetchone()
+            tabla = 'recargas'
+        if row:
+            c.execute(q("UPDATE usuarios SET saldo=saldo+? WHERE id=?"), (row[1], row[0]))
+            c.execute(q(f"UPDATE {tabla} SET estado='aprobado' WHERE id=?"), (rid,))
+            try:
+                otra = 'recargas' if tabla=='recargas_bcp' else 'recargas_bcp'
+                c.execute(q(f"UPDATE {otra} SET estado='aprobado' WHERE id=?"), (rid,))
+            except: pass
+            con.commit()
+    except Exception as e:
+        print(e)
     con.close()
     return jsonify({"ok":True})
 
@@ -266,6 +255,7 @@ def rechazar_recarga():
     except: pass
     con.commit(); con.close()
     return jsonify({"ok":True})
+
 @app.route("/api/solicitar-retiro", methods=["POST"])
 def solicitar_retiro():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"}),401
@@ -324,7 +314,6 @@ def api_mis_apuestas():
     rows=c.fetchall(); con.close()
     return jsonify([{"sorteo":r[0],"fecha":r[1][:16] if r[1] else "","mi_animal":r[2],"monto":r[3],"ganador":r[4],"estado":r[5]} for r in rows])
 
-# ADMIN
 ADMIN_USER="Globallotery"; ADMIN_PASS_HASH=hash_pass("Diosmeama.1")
 @app.route('/admin/login')
 def admin_login_page(): return render_template('admin_login.html')
@@ -347,65 +336,30 @@ def admin_panel():
         sid = sorteo_actual[0] if sorteo_actual else 0
         c.execute(q("SELECT COALESCE(SUM(monto),0) FROM apuestas WHERE sorteo_id=?"), (sid,))
         recaudado = int(float(c.fetchone()[0] or 0))
-
-        # SELECT sin r.nombre para que no de error
         try:
             c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, u.email FROM recargas_bcp r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
             recargas=c.fetchall()
         except:
-            # Si falla, probamos la otra tabla
             c.execute(q("SELECT r.id, r.user_id, r.monto, r.operacion, r.estado, r.fecha, r.voucher, u.email FROM recargas r LEFT JOIN usuarios u ON u.id=r.user_id WHERE r.estado='pendiente' ORDER BY r.id DESC"))
             recargas=c.fetchall()
-
         c.execute(q("SELECT COUNT(*) FROM usuarios")); num_usuarios=c.fetchone()[0] or 0
         con.close()
         return render_template('admin.html', sorteo_actual=sorteo_actual, recargas_pendientes=recargas, recargas=recargas, bcp_cuentas=[], recaudado=recaudado, num_usuarios=num_usuarios, pausado=pausado, bcp_cuenta=None)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return f"<h1>Error en admin: {e}</h1><pre>{traceback.format_exc()}</pre>"
-    
+
 @app.route('/admin/usuarios')
 def admin_usuarios():
-    if not session.get('admin'):
-        return redirect('/admin/login')
+    if not session.get('admin'): return redirect('/admin/login')
     con=db(); c=con.cursor()
     try:
         c.execute(q("SELECT id, email, telefono, saldo, fecha_registro FROM usuarios ORDER BY id DESC"))
         usuarios = c.fetchall()
-    except Exception as e:
-        print(f"ERROR USUARIOS: {e}")
+    except:
         usuarios = []
     con.close()
     return render_template('admin_usuarios.html', usuarios=usuarios)
-
-@app.route('/api/admin/aprobar-recarga', methods=['POST'])
-def aprobar_recarga():
-    if not session.get('admin'): return jsonify({"ok":False})
-    d=request.json; rid=d['id']
-    con=db(); c=con.cursor()
-    c.execute(q("SELECT user_id, monto FROM recargas_bcp WHERE id=?"), (rid,))
-    row=c.fetchone()
-    if not row:
-        c.execute(q("SELECT user_id, monto FROM recargas WHERE id=?"), (rid,))
-        row=c.fetchone()
-    if row:
-        c.execute(q("UPDATE usuarios SET saldo=saldo+? WHERE id=?"), (row[1], row[0]))
-        c.execute(q("UPDATE recargas_bcp SET estado='aprobado' WHERE id=?"), (rid,))
-        c.execute(q("UPDATE recargas SET estado='aprobado' WHERE id=?"), (rid,))
-        con.commit()
-    con.close()
-    return jsonify({"ok":True})
-
-@app.route('/api/admin/rechazar-recarga', methods=['POST'])
-def rechazar_recarga():
-    if not session.get('admin'): return jsonify({"ok":False})
-    rid=request.json.get('id')
-    con=db(); c=con.cursor()
-    c.execute(q("UPDATE recargas_bcp SET estado='rechazado' WHERE id=?"), (rid,))
-    c.execute(q("UPDATE recargas SET estado='rechazado' WHERE id=?"), (rid,))
-    con.commit(); con.close()
-    return jsonify({"ok":True})
 
 @app.route('/api/admin/control', methods=['POST'])
 def api_admin_control():
