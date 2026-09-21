@@ -200,46 +200,78 @@ def apostar_multiple():
     con.commit(); con.close()
     return jsonify({"ok":True})
 
+# === RECARGAS BCP - GUARDAR ===
 @app.route('/api/recarga-bcp', methods=['POST'])
 def recarga_bcp():
+    if 'uid' not in session:
+        return jsonify({"ok":False, "msg":"No logueado"})
     try:
-        if 'user' not in session:
-            return jsonify({"ok":False,"msg":"No logueado"})
+        user_id = session['uid']
+        monto = request.form.get('monto') or request.form.get('montoCustom') or '0'
+        operacion = request.form.get('operacion','').strip()
+        nombre = request.form.get('nombre','').strip() or request.form.get('cardNombre','').strip()
 
-        monto = request.form.get('monto') or (request.json.get('monto') if request.is_json else 0)
-        try: monto = int(float(monto))
-        except: monto = 0
+        if not operacion:
+            return jsonify({"ok":False, "msg":"Falta N° Operación"})
 
-        operacion = request.form.get('operacion','') or (request.json.get('operacion','') if request.is_json else 'sin-op')
-        nombre = request.form.get('nombre','') or (request.json.get('nombre','') if request.is_json else '')
-
-        # Voucher opcional - no bloqueamos si no hay imagen
         voucher_path = ""
         if 'voucher' in request.files:
-            file = request.files['voucher']
-            if file and file.filename!= '':
-                try:
-                    os.makedirs("static/vouchers", exist_ok=True)
-                    fname = secure_filename(f"{session['user']}_{operacion}_{int(datetime.now().timestamp())}.jpg")
-                    voucher_path = os.path.join("static/vouchers", fname)
-                    file.save(voucher_path)
-                except Exception as e:
-                    print(f"Error guardando voucher: {e}")
-                    voucher_path = f"error-{operacion}"
+            f = request.files['voucher']
+            if f and f.filename:
+                os.makedirs('static/vouchers', exist_ok=True)
+                fname = f"{int(time.time())}_{user_id}_{f.filename}"
+                f.save(os.path.join('static/vouchers', fname))
+                voucher_path = f"static/vouchers/{fname}"
 
         con=db(); c=con.cursor()
-        # Guardamos en AMBAS tablas para que siempre aparezca
-        c.execute(q("INSERT INTO recargas_bcp (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
-        c.execute(q("INSERT INTO recargas (user_id,monto,operacion,estado,fecha,voucher,nombre) VALUES (?,?,?,?,?,?,?)"),(session['user'], monto, operacion, 'pendiente', datetime.now().isoformat(), voucher_path, nombre))
-        con.commit()
-        con.close()
-        print(f"RECARGA GUARDADA: user={session['user']} monto={monto} op={operacion}")
-        return jsonify({"ok":True,"msg":f"Recarga S/{monto} enviada correctamente"})
+        # Intentar guardar en recargas_bcp primero
+        try:
+            c.execute(q("INSERT INTO recargas_bcp (user_id, monto, operacion, estado, fecha, voucher, nombre) VALUES (?,?,?,?,?,?,?)"),
+                      (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path, nombre))
+        except:
+            # Si no existe esa tabla/columnas, usa recargas simple
+            c.execute(q("INSERT INTO recargas (user_id, monto, operacion, estado, fecha, voucher) VALUES (?,?,?,?,?,?)"),
+                      (user_id, float(monto), operacion, 'pendiente', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), voucher_path))
+        con.commit(); con.close()
+        return jsonify({"ok":True, "msg":"Recarga enviada, espera aprobación"})
     except Exception as e:
-        print(f"ERROR RECARGA_BCP: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"ok":False,"msg":str(e)})
+        import traceback; traceback.print_exc()
+        return jsonify({"ok":False, "msg":str(e)})
+
+@app.route('/api/admin/aprobar-recarga', methods=['POST'])
+def aprobar_recarga():
+    if not session.get('admin'): return jsonify({"ok":False})
+    d=request.json; rid=d['id']
+    con=db(); c=con.cursor()
+    c.execute(q("SELECT user_id, monto FROM recargas_bcp WHERE id=?"), (rid,))
+    row=c.fetchone()
+    tabla = 'recargas_bcp'
+    if not row:
+        c.execute(q("SELECT user_id, monto FROM recargas WHERE id=?"), (rid,))
+        row=c.fetchone()
+        tabla = 'recargas'
+    if row:
+        c.execute(q("UPDATE usuarios SET saldo=saldo+? WHERE id=?"), (row[1], row[0]))
+        # actualiza las dos tablas por si acaso
+        try: c.execute(q("UPDATE recargas_bcp SET estado='aprobado' WHERE id=?"), (rid,))
+        except: pass
+        try: c.execute(q("UPDATE recargas SET estado='aprobado' WHERE id=?"), (rid,))
+        except: pass
+        con.commit()
+    con.close()
+    return jsonify({"ok":True})
+
+@app.route('/api/admin/rechazar-recarga', methods=['POST'])
+def rechazar_recarga():
+    if not session.get('admin'): return jsonify({"ok":False})
+    rid=request.json.get('id')
+    con=db(); c=con.cursor()
+    try: c.execute(q("UPDATE recargas_bcp SET estado='rechazado' WHERE id=?"), (rid,))
+    except: pass
+    try: c.execute(q("UPDATE recargas SET estado='rechazado' WHERE id=?"), (rid,))
+    except: pass
+    con.commit(); con.close()
+    return jsonify({"ok":True})
 @app.route("/api/solicitar-retiro", methods=["POST"])
 def solicitar_retiro():
     if 'user' not in session: return jsonify({"ok":False,"msg":"No logueado"}),401

@@ -182,6 +182,55 @@ const modalRetiro=document.getElementById('modalRetiro'); function abrirRetiro()
 function cerrarPanels(){ document.getElementById('panelMisJugadas').style.display='none'; document.getElementById('panelUltimos').style.display='none'; }
 function abrirMisJugadas(){ cerrarPanels(); document.getElementById('panelMisJugadas').style.display='block'; let txt=localStorage.getItem('mis_apuestas_texto'); document.getElementById('listaMisJugadas').innerHTML=txt?txt:'No tienes apuestas'; }
 function abrirUltimos(){ cerrarPanels(); document.getElementById('panelUltimos').style.display='block'; document.getElementById('listaUltimos').innerHTML=document.getElementById('historialAnimales').innerHTML; }
+// === RECARGA BCP FIX - PEGA AQUI ===
+let montoSel = 50;
+const montosBtn = document.getElementById('montosBtn');
+if(montosBtn){
+  montosBtn.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      montosBtn.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      montoSel = parseFloat(b.dataset.v);
+      document.getElementById('montoMostrar').innerText='S/ '+montoSel.toFixed(2);
+      document.getElementById('btnPagar').innerText='✅ Enviar voucher - S/ '+montoSel;
+    }
+  });
+}
+const montoCustom = document.getElementById('montoCustom');
+if(montoCustom){
+  montoCustom.oninput=(e)=>{
+    if(e.target.value){ montoSel=parseFloat(e.target.value)||0; document.getElementById('montoMostrar').innerText='S/ '+montoSel.toFixed(2); document.getElementById('btnPagar').innerText='✅ Enviar voucher - S/ '+montoSel; }
+  }
+}
+const btnPagar = document.getElementById('btnPagar');
+if(btnPagar){
+  btnPagar.onclick = async ()=>{
+    let op = document.getElementById('operacion').value.trim();
+    let nom = document.getElementById('cardNombre').value.trim();
+    let fileInput = document.getElementById('voucherFile');
+    let file = fileInput? fileInput.files[0] : null;
+    if(!op){ alert('Pon N° operación'); return; }
+    if(!file){ alert('Sube tu voucher'); return; }
+
+    let fd = new FormData();
+    fd.append('monto', montoSel);
+    fd.append('operacion', op);
+    fd.append('nombre', nom);
+    fd.append('voucher', file);
+
+    btnPagar.innerText='⏳ Enviando...';
+    btnPagar.disabled=true;
+    try{
+      let r = await fetch('/api/recarga-bcp',{method:'POST', body:fd});
+      let j = await r.json();
+      if(j.ok){ alert('¡Enviado! El admin lo aprobará en minutos'); if(typeof cerrarRecarga==='function') cerrarRecarga(); else document.getElementById('modalRecarga').style.display='none'; }
+      else alert('Error: '+j.msg);
+    }catch(e){ alert('Error: '+e); }
+    btnPagar.disabled=false;
+    btnPagar.innerText='✅ Enviar voucher - S/ '+montoSel;
+  }
+}
+function cerrarRecarga(){ const m=document.getElementById('modalRecarga'); if(m) m.style.display='none'; }
 </script>
 </body>
 </html>
