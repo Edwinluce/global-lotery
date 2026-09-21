@@ -202,7 +202,6 @@ def apostar_multiple():
 
 # === RECARGAS BCP - GUARDAR ===
 @app.route('/api/recarga-bcp', methods=['POST'])
-@app.route('/api/recarga-bcp', methods=['POST'])
 def recarga_bcp():
     if 'uid' not in session:
         return jsonify({"ok":False, "msg":"No logueado"})
